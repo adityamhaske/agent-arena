@@ -36,7 +36,7 @@ class TicketingSystem:
             return dict(row)
         return {"error": "Ticket not found"}
 
-    def update_ticket(self, ticket_id: int, status: Optional[str] = None, tier: Optional[str] = None) -> Dict[str, Any]:
+    def update_ticket(self, ticket_id: int, status: Optional[str] = None, tier: Optional[str] = None, description: Optional[str] = None) -> Dict[str, Any]:
         c = self.conn.cursor()
         updates = []
         params = []
@@ -46,6 +46,9 @@ class TicketingSystem:
         if tier:
             updates.append("tier = ?")
             params.append(tier)
+        if description is not None:
+            updates.append("description = ?")
+            params.append(description)
             
         if not updates:
             return {"error": "No fields to update"}
@@ -75,7 +78,7 @@ class TicketingSystem:
                     "properties": {
                         "customer_id": {"type": "string"},
                         "description": {"type": "string"},
-                        "status": {"type": "string", "enum": ["open", "closed", "escalated"]},
+                        "status": {"type": "string", "enum": ["open", "closed", "escalated", "on_hold"]},
                         "tier": {"type": "string", "enum": ["standard", "premium", "enterprise"]}
                     },
                     "required": ["customer_id", "description"]
@@ -94,13 +97,14 @@ class TicketingSystem:
             },
             {
                 "name": "update_ticket",
-                "description": "Updates the status or tier of a ticket",
+                "description": "Updates the status, tier, and/or description of a ticket",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "ticket_id": {"type": "integer"},
-                        "status": {"type": "string", "enum": ["open", "closed", "escalated"]},
-                        "tier": {"type": "string", "enum": ["standard", "premium", "enterprise"]}
+                        "status": {"type": "string", "enum": ["open", "closed", "escalated", "on_hold"]},
+                        "tier": {"type": "string", "enum": ["standard", "premium", "enterprise"]},
+                        "description": {"type": "string", "description": "Full replacement text for the ticket description"}
                     },
                     "required": ["ticket_id"]
                 }

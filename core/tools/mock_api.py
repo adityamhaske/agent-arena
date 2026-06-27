@@ -16,9 +16,10 @@ class MockCustomerAPI:
         
         # Mock database
         self.customers = {
-            "CUST-001": {"name": "Alice Smith", "tier": "premium", "status": "active"},
-            "CUST-002": {"name": "Bob Jones", "tier": "standard", "status": "inactive"},
-            "CUST-003": {"name": "Charlie Brown", "tier": "enterprise", "status": "active"}
+            "CUST-001": {"name": "Alice Smith", "tier": "premium", "status": "active", "credit_hold": False},
+            "CUST-002": {"name": "Bob Jones", "tier": "standard", "status": "inactive", "credit_hold": False},
+            "CUST-003": {"name": "Charlie Brown", "tier": "enterprise", "status": "active", "credit_hold": False},
+            "CUST-004": {"name": "Diana Prince", "tier": "enterprise", "status": "active", "credit_hold": True},
         }
 
     def _inject_failure(self):
@@ -39,7 +40,11 @@ class MockCustomerAPI:
         return [
             {
                 "name": "get_customer_profile",
-                "description": "Retrieves customer profile information from the CRM API.",
+                "description": (
+                    "Retrieves customer profile information from the CRM API. "
+                    "Returns: name, tier, status, and credit_hold (bool — True means "
+                    "the account has a financial credit hold that affects escalation policy)."
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {

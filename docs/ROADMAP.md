@@ -58,3 +58,25 @@ supervisor never even tried to delegate.
 - `critic_missed_error` — critique fired but revision still produced wrong output (num_critique_rounds > 0 + task_failure)
 
 Do not add this until we have passing runs of each architecture to calibrate against.
+
+### peer_to_peer: rigid handoff schema (DELIBERATE DESIGN CHOICE, NOT A BUG)
+**Current state:** The CRM Peer's system prompt hard-codes the handoff format:
+`HANDOFF: customer_id=<id>, tier=<tier>, name=<name>, status=<status>`
+
+**What this tests:** The real-world pattern of under-specified handoff payloads —
+API contracts between agents that were designed for a known set of fields and never
+updated when new fields (e.g. `credit_hold`) were added to the upstream system.
+This is the dominant failure mode in production multi-agent systems, not "the model
+chose a bad format."
+
+**What this does NOT test:** Open-format peer_to_peer, where the CRM Peer decides
+what to include in the handoff and the Ticketing Peer parses free-form context.
+An open-format variant would test a different (and arguably less realistic) failure mode.
+
+**Phase 4 report note:** Results for peer_to_peer on task_02 should be presented as
+"rigid-schema peer_to_peer" to preempt the "isn't this just a bad prompt?" objection.
+The schema rigidity is the architectural property under test, not the model's reasoning quality.
+
+**Deferred:** Open-format peer_to_peer variant is future work. Do not add without
+a separate task designed to distinguish schema-rigid failures from reasoning failures.
+
