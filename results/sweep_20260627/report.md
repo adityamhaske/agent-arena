@@ -1,6 +1,6 @@
 # Agent Arena — Sweep Report
 
-**Generated:** 2026-06-27 07:52  
+**Generated:** 2026-06-27 07:53  
 **Sweep timestamp:** `20260627_073355`  
 **Total runs:** 28 active (0 skipped/missing key)  
 
@@ -108,7 +108,12 @@ This study evaluates coordination failure modes within a single model family (Ge
 
 ### task_01 (Customer Escalation — all architectures can solve this)
 - Expected: all architectures pass. Variation in score reflects LLM call efficiency.
-- A task_01 failure is likely a model quality or tool invocation issue, not architectural.
+- One `supervisor_worker` trial on task_01 failed due to a worker hallucinating tool
+  execution success — a general LLM reliability issue, not evidence of architecture-specific
+  information loss. With only 3 trials per cell, we cannot distinguish whether this
+  failure rate differs from `single_agent`'s; this would require substantially more
+  trials to detect reliably (a single failure in 3 trials is consistent with failure
+  rates anywhere from a few percent to ~50%).
 
 ### task_02 (Credit Hold — information asymmetry trap)
 - `peer_to_peer`: rigid handoff schema (`HANDOFF: customer_id, tier, name, status`) does not
