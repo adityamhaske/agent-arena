@@ -1,6 +1,24 @@
 # Agent Arena
 
-A study comparing how four multi-agent coordination patterns handle the same task — including one designed to expose a structural failure mode that single-agent baselines don't have.
+## What is this project?
+Imagine assigning a complex task to a single highly capable person, versus splitting that same task across a team of specialists. Does dividing the work introduce new kinds of errors? This project explores that question for AI. We built a testing ground to see what happens when multiple AI "agents" try to collaborate to solve customer support tickets, compared to having just one agent do everything itself.
+
+## Why does this matter?
+AI systems are increasingly moving away from single chatbots toward teams of specialized agents working together—from customer service bots handing off to billing bots, to complex coding assistants. If splitting work between agents can silently lose critical information during the handoff, that's a massive hidden risk for anyone deploying these systems in the real world.
+
+## Who is this for?
+- AI engineers building multi-agent systems
+- Engineering leaders deciding whether to adopt multi-agent architectures
+- Researchers studying AI reliability and failure modes
+
+## What did this project find?
+When one AI agent handed off a task to another, an important detail sometimes got lost along the way—not because the AI was confused, but because of how the handoff itself was designed. This happened every single time in one setup, and about 3 times in 10 in another. The result was an AI confidently executing the wrong action because it never received the crucial piece of information from its teammate.
+
+## What can someone gain from this?
+Engineers get a working testing harness to check their own multi-agent systems for this exact type of failure. Meanwhile, anyone evaluating AI vendor claims gets a concrete reason to ask a critical question: "How does your system guarantee that vital information isn't dropped when passing between your agents?"
+
+## How do I explore this project?
+If you're not planning to run the code, you can read the technical **Key finding** section just below this one, and then jump straight to the full writeup in [results/sweep_20260627/report.md](results/sweep_20260627/report.md).
 
 ## Key finding
 
