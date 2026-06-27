@@ -58,6 +58,7 @@ def run_single(
     model: str,
     trial: int,
     env: dict,
+    trace_dir: str,
 ) -> dict:
     """Run one trial and return a result record."""
     cmd = [
@@ -67,6 +68,7 @@ def run_single(
         "--provider", provider,
         "--model", model,
         "--api-failure-rate", "0.0",
+        "--trace-dir", trace_dir,
     ]
     started_at = datetime.now(timezone.utc).isoformat()
     try:
@@ -163,6 +165,9 @@ def main():
 
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    sweep_date = datetime.now().strftime("%Y%m%d")
+    trace_dir = str(Path(args.output_dir) / f"sweep_{sweep_date}")
+    Path(trace_dir).mkdir(parents=True, exist_ok=True)
     manifest_path = Path(args.output_dir) / f"sweep_{timestamp}.json"
 
     # Build the run list
@@ -220,7 +225,7 @@ def main():
         else:
             env["ANTHROPIC_API_KEY"] = api_key
 
-        rec = run_single(arch, task, provider, model, trial, env)
+        rec = run_single(arch, task, provider, model, trial, env, trace_dir)
         results.append(rec)
 
         grade = rec.get("grade") or {}

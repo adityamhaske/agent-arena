@@ -97,6 +97,10 @@ def main():
         help="Evaluation task to run (task_01: customer escalation, task_02: credit hold trap)",
     )
     parser.add_argument(
+        "--trace-dir", default=".",
+        help="Directory to write trace file (default: current dir)",
+    )
+    parser.add_argument(
         "--api-failure-rate", type=float, default=0.0,
         help="Failure rate of mock API (500 error)",
     )
@@ -114,7 +118,10 @@ def main():
     seed_fn(db_path)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    trace_filepath = f"trace_{args.architecture}_{args.provider}_{args.task}_{timestamp}.jsonl"
+    trace_dir = args.trace_dir
+    os.makedirs(trace_dir, exist_ok=True)
+    trace_filename = f"trace_{args.architecture}_{args.provider}_{args.task}_{timestamp}.jsonl"
+    trace_filepath = os.path.join(trace_dir, trace_filename)
 
     if args.provider == "anthropic":
         model_name = args.model or "claude-sonnet-4-6"

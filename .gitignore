@@ -9,10 +9,23 @@ venv/
 env.bak/
 venv.bak/
 
-# Database files
-*.sqlite
-*.sqlite3
-*.db
+# DO NOT ignore trace files or the eval database.
+# These are the project's primary evidence/results, not build artifacts.
+# A reviewer cloning this repo should see the actual run data.
+# *.jsonl   <- intentionally NOT ignored
+# *.sqlite  <- intentionally NOT ignored
 
-# Trace files
-*.jsonl
+# Secrets — never commit these
+.env
+.env.local
+*.key
+
+# OS / editor noise
+.DS_Store
+.vscode/
+*.swp
+
+# Python packaging
+*.egg-info/
+dist/
+build/
