@@ -128,8 +128,8 @@ class GeminiProvider(ModelProvider):
             genai.configure(api_key=api_key or os.environ.get("GEMINI_API_KEY"))
 
     @retry(
-        wait=wait_exponential(multiplier=2, min=15, max=60),
-        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=2, min=15, max=45),
+        stop=stop_after_attempt(3),
         retry=retry_if_exception_type((google.api_core.exceptions.ResourceExhausted, google.api_core.exceptions.ServiceUnavailable, google.api_core.exceptions.InternalServerError))
     )
     def _call_api(self, model, contents, tools):

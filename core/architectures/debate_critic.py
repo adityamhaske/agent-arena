@@ -64,39 +64,44 @@ class DebateCriticArchitecture:
 
     def _extract_tool_call_summary(self, trace_filepath: str, run_id: str) -> str:
         """
-        Build a readable summary of tool calls and results so far for the critic.
-        Reads the current trace file and extracts tool_call/tool_result pairs.
+        Build a readable summary of tool calls and results for the critic.
+        Reads the trace file flat (no DAG reconstruction) so it works correctly
+        mid-run and avoids the DAG flatten bug.
         """
-        from core.trace import TraceLogger
+        import json as _json
         try:
-            events = TraceLogger.reconstruct_dag(trace_filepath)
+            all_events = []
+            with open(trace_filepath, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        all_events.append(_json.loads(line))
         except Exception:
             return "(unable to read trace)"
 
-        # Flatten DAG back to list for easy filtering
-        all_events = []
-        def flatten(evts):
-            for e in evts:
-                all_events.append(e)
-                flatten(e.get("children", []))
-        flatten(events)
+        # Index tool_calls by their tool_call_id
+        tool_calls = {}
+        for e in all_events:
+            if e.get("event_type") == "tool_call":
+                call_id = e["payload"].get("tool_call_id")
+                if call_id:
+                    tool_calls[call_id] = e
 
         lines = []
-        tool_calls = {e["event_id"]: e for e in all_events if e.get("event_type") == "tool_call"}
-        tool_results = [e for e in all_events if e.get("event_type") == "tool_result"]
-
-        for tr in tool_results:
-            call_id = tr["payload"].get("tool_call_id", "?")
-            tc = next((v for v in tool_calls.values() if v["payload"].get("tool_call_id") == call_id), None)
-            if tc:
-                args = tc["payload"].get("arguments", {})
-                result = tr["payload"].get("result", "")
-                error = tr["payload"].get("error", False)
-                lines.append(
-                    f"- {tc['payload']['tool_name']}({args}) → "
-                    + (f"ERROR: {result}" if error else f"{result}")
-                )
+        for e in all_events:
+            if e.get("event_type") == "tool_result":
+                call_id = e["payload"].get("tool_call_id")
+                tc = tool_calls.get(call_id)
+                if tc:
+                    args = tc["payload"].get("arguments", {})
+                    result = e["payload"].get("result", "")
+                    error = e["payload"].get("error", False)
+                    lines.append(
+                        f"- {tc['payload']['tool_name']}({args}) → "
+                        + (f"ERROR: {result}" if error else str(result))
+                    )
         return "\n".join(lines) if lines else "(no tool calls recorded)"
+
 
     def run_task(self, prompt: str) -> str:
         # Store trace filepath for critic to read
@@ -131,11 +136,18 @@ class DebateCriticArchitecture:
 
         # === Phase 2: Critic review ===
         critic_system = (
-            "You are a Critic Agent reviewing the work of a Proposer Agent. "
-            "You will receive: the original task, the proposer's answer, and a log of tool calls made. "
-            "Identify any mistakes, missing steps, wrong values, or unresolved tool errors. "
-            "Be specific — point to exactly what is wrong and what the correct action should be. "
-            "If the answer is fully correct, say 'LGTM: no issues found.'"
+            "You are a Critic Agent reviewing the work of a Proposer Agent on a customer support task. "
+            "You will receive: (1) the original task, (2) the proposer's final answer, "
+            "and (3) a log of every tool call made and its actual result.\n\n"
+            "Your job is to cross-check the proposer's CLAIMED outcome against the actual tool call RESULTS. "
+            "Specifically:\n"
+            "- If the proposer claims a customer has tier=X, verify that get_customer_profile actually returned tier=X.\n"
+            "- If the proposer claims a ticket was updated, verify that update_ticket returned status='updated'.\n"
+            "- If the proposer claims a step was completed but no corresponding tool call is in the log, flag it as a hallucination.\n"
+            "- If any tool call returned an ERROR and the proposer did not mention it or retry it, flag it.\n"
+            "- If all values in the proposer's answer match the tool results and all required steps are complete, "
+            "say exactly: 'LGTM: no issues found.'\n\n"
+            "Be specific — quote the exact discrepancy (e.g. 'tool returned tier=basic but proposer claimed tier=enterprise')."
         )
 
         critic_prompt = (
