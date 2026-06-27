@@ -27,6 +27,11 @@ When a tool raises an exception, `agent.py` catches it at line 121, converts it 
 - **This is the agent's own retry capability** — it is a test of the model's reasoning and the architecture's resilience.
 - **Visible in traces:** Yes — every tool error and every subsequent retry call appears as distinct `tool_call` / `tool_result` events in the JSONL, making it directly measurable.
 
+## Design Rationale
+
+**tenacity handles transport-level failures from the real provider SDKs only.** Tool-level application errors raised by our mock tools are intentionally NOT caught by tenacity and are left entirely to the agent's own ReAct-loop reasoning to recover from. This is a deliberate design choice, not an oversight: tool-error recovery is itself something we want to measure and grade. Silencing mock tool failures through infrastructure-level retries would hide the behavioral signal we are trying to capture — namely, whether an agent architecture can detect, reason about, and retry a failed tool call on its own, without any scaffolding assistance.
+
+
 ## Verification (confirmed via live trace)
 In `trace_baseline_20260626_215009.jsonl` (80% failure rate run):
 - Events 5–6: First `tool_call` → `tool_result` with `error: true`. **No sleep between events** (timestamps differ by ~1ms), proving tenacity did NOT fire here — the mock exception type was not in its retry list.
