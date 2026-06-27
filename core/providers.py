@@ -128,7 +128,7 @@ class GeminiProvider(ModelProvider):
             genai.configure(api_key=api_key or os.environ.get("GEMINI_API_KEY"))
 
     @retry(
-        wait=wait_exponential(multiplier=1, min=2, max=60),
+        wait=wait_exponential(multiplier=2, min=15, max=60),
         stop=stop_after_attempt(5),
         retry=retry_if_exception_type((google.api_core.exceptions.ResourceExhausted, google.api_core.exceptions.ServiceUnavailable, google.api_core.exceptions.InternalServerError))
     )
@@ -148,7 +148,12 @@ class GeminiProvider(ModelProvider):
                             content_dict = {"result": item["content"]}
                             if item["is_error"]:
                                 content_dict["error"] = True
-                            parts.append(content_types.Part.from_function_response(name=item["tool_name"], response=content_dict))
+                            parts.append(genai.protos.Part(
+                                function_response=genai.protos.FunctionResponse(
+                                    name=item["tool_name"],
+                                    response=content_dict
+                                )
+                            ))
                     if parts:
                         gemini_messages.append({"role": "user", "parts": parts})
             elif msg["role"] == "assistant":
@@ -157,7 +162,12 @@ class GeminiProvider(ModelProvider):
                     parts.append(msg["text"])
                 if "tool_calls" in msg and msg["tool_calls"]:
                     for tc in msg["tool_calls"]:
-                        parts.append(content_types.Part.from_function_call(name=tc["name"], args=tc["arguments"]))
+                        parts.append(genai.protos.Part(
+                            function_call=genai.protos.FunctionCall(
+                                name=tc["name"],
+                                args=tc["arguments"]
+                            )
+                        ))
                 if parts:
                     gemini_messages.append({"role": "model", "parts": parts})
                     

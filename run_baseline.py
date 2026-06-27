@@ -28,6 +28,9 @@ def setup_mock_db(db_path: str):
 def main():
     parser = argparse.ArgumentParser(description="Agent Arena - Phase 1 Baseline Execution")
     parser.add_argument("--provider", choices=["anthropic", "gemini"], default="gemini", help="Model provider to use")
+    parser.add_argument("--model", type=str, default=None, help="Specific model name to use")
+    parser.add_argument("--api-failure-rate", type=float, default=0.0, help="Failure rate of mock API (500 error)")
+    parser.add_argument("--api-rate-limit-prob", type=float, default=0.3, help="Rate limit probability of mock API (429 error)")
     args = parser.parse_args()
 
     print(f"Agent Arena - Phase 1 Baseline Execution (Provider: {args.provider})")
@@ -39,16 +42,18 @@ def main():
     trace_filepath = f"trace_baseline_{timestamp}.jsonl"
     
     if args.provider == "anthropic":
-        provider = AnthropicProvider(model_name="claude-sonnet-4-6")
+        model_name = args.model or "claude-sonnet-4-6"
+        provider = AnthropicProvider(model_name=model_name)
     else:
-        provider = GeminiProvider(model_name="gemini-1.5-pro")
+        model_name = args.model or "gemini-2.5-flash"
+        provider = GeminiProvider(model_name=model_name)
 
     arch = SingleAgentArchitecture(
         provider=provider,
         trace_filepath=trace_filepath, 
         db_path=db_path,
-        api_failure_rate=0.0,
-        api_rate_limit_prob=0.3
+        api_failure_rate=args.api_failure_rate,
+        api_rate_limit_prob=args.api_rate_limit_prob
     )
     
     print(f"Starting task execution...")
@@ -61,13 +66,14 @@ def main():
     
     print(f"\nExecution finished. Trace logged to {trace_filepath}")
     
+    print("\n--- Grading Run ---")
     try:
-        from core.trace import TraceLogger
-        root_events = TraceLogger.reconstruct_dag(trace_filepath)
-        total_events = sum(1 for line in open(trace_filepath))
-        print(f"Trace contains {total_events} events.")
+        from evals.tasks.task_01_customer_escalation import grade_customer_escalation
+        grade_res = grade_customer_escalation(trace_filepath, db_path)
+        import json
+        print(json.dumps(grade_res, indent=2))
     except Exception as e:
-        print(f"Could not print trace summary: {e}")
+        print(f"Failed to grade run: {e}")
 
 if __name__ == "__main__":
     main()
