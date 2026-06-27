@@ -1,0 +1,37 @@
+{
+  "sweep_timestamp": "20260627_073355",
+  "runs": [
+    {
+      "architecture": "single_agent",
+      "task": "task_01",
+      "provider": "gemini",
+      "model": "gemini-2.5-flash",
+      "trial": 1,
+      "started_at": "2026-06-27T14:33:55.105341+00:00",
+      "success": true,
+      "trace_file": "trace_single_agent_gemini_task_01_20260627_073355.jsonl",
+      "grade": {
+        "passed": true,
+        "score": 1.0,
+        "failure_category": null,
+        "reason": "Task completed successfully with correct final DB state and trace validation.",
+        "metrics": {
+          "num_tool_calls": 3,
+          "num_llm_calls": 4,
+          "queried_profile": true,
+          "searched_tickets": true,
+          "updated_ticket": true,
+          "db_status": "escalated",
+          "db_tier": "enterprise",
+          "db_correct": true,
+          "num_delegations": 0,
+          "num_workers_invoked": 0,
+          "num_handoffs": 0,
+          "num_critique_rounds": 0,
+          "num_revisions": 0
+        }
+      },
+      "stderr_snippet": ""
+    }
+  ]
+}
