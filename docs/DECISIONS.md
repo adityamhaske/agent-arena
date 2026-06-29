@@ -13,3 +13,5 @@ The following ADRs document the core design choices made during the development 
 | [ADR 0006](adr/0006-model-agnostic-provider.md) | Model-Agnostic Provider | Abstract LLM API calls behind a unified interface to test both Anthropic and Gemini seamlessly. |
 | [ADR 0009](adr/0009-peer-to-peer-architecture.md) | Peer-to-Peer | Implement independent agents coordinating via a rigid JSON handoff message. |
 | [ADR 0010](adr/0010-debate-critic-architecture.md) | Debate-Critic | Implement a proposer-critic model where a critic forces revisions if it detects logical flaws. |
+
+> **Note:** ADR 0007 is intentionally skipped. The number was retired during the 2026-06 renumbering cleanup when a collision was resolved — the file formerly named `0007-debate-critic-architecture.md` was reassigned to ADR 0010. No file is missing.
