@@ -1,4 +1,4 @@
-# ADR 0005: Supervisor-Worker Architecture
+# ADR 0008: Supervisor-Worker Architecture
 
 **Date:** 2026-06-27
 **Status:** Accepted

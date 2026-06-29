@@ -26,7 +26,7 @@
   - [x] Debate-Critic architecture (`debate_critic.py`)
   - [x] Critic system prompt requires value-level cross-check (claimed vs actual tool results)
   - [x] `peer_handoff` is a structured TraceEvent (not informal text)
-  - [x] ADRs 0005, 0006, 0007 written
+  - [x] ADRs 0005, 0006, 0008, 0009, 0010 written
   - [x] Live end-to-end verification of all 4 architectures on task_01 and task_02
 
 - [x] **Phase 4: Comparative Analytics & Report**

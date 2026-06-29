@@ -1,4 +1,4 @@
-# ADR 0007: Debate-Critic Architecture
+# ADR 0010: Debate-Critic Architecture
 
 **Date:** 2026-06-27
 **Status:** Accepted

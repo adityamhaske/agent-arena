@@ -1,4 +1,4 @@
-# ADR 0006: Peer-to-Peer Architecture
+# ADR 0009: Peer-to-Peer Architecture
 
 **Date:** 2026-06-27
 **Status:** Accepted
