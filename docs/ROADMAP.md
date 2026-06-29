@@ -18,7 +18,7 @@
   - [x] `has_finished` accepts `run_finish`/`supervisor_finish`/`revision_finish`
         in addition to `agent_finish` (multi-agent architectures)
   - [x] Grader verified on live Phase 1 traces
-  - [ ] Multi-trial test harness
+  - [x] Multi-trial test harness (`run_all.py`)
 
 - [x] **Phase 3: Multi-Agent Architectures**
   - [x] Supervisor-Worker architecture (`supervisor_worker.py`)
@@ -27,37 +27,42 @@
   - [x] Critic system prompt requires value-level cross-check (claimed vs actual tool results)
   - [x] `peer_handoff` is a structured TraceEvent (not informal text)
   - [x] ADRs 0005, 0006, 0007 written
-  - [ ] Live end-to-end verification of all 3 architectures (pending stable API quota)
+  - [x] Live end-to-end verification of all 4 architectures on task_01 and task_02
 
-- [ ] **Phase 4: Comparative Analytics & Report**
-  - [ ] Provider × Architecture sweep matrix (4 architectures × 2 providers, N trials)
-  - [ ] Aggregate metrics over multiple trials
-  - [ ] Markdown reporting generator (`results/report.md`)
+- [x] **Phase 4: Comparative Analytics & Report**
+  - [x] Provider × Architecture sweep matrix (4 architectures × 2 tasks, N trials, Gemini 2.5 Flash)
+  - [x] task_02 (Credit Hold) — information asymmetry trap task designed and validated
+  - [x] Aggregate metrics over multiple trials (28 runs total, 0 incompletes)
+  - [x] Markdown reporting generator (`report_generator.py`)
+  - [x] Full sweep report at `results/sweep_20260627/report.md`
+  - [x] Traces organized in `results/exploratory/` and `results/sweep_20260627/`
 
 ---
 
-## Known Gaps (Pre-Phase 4)
+## Known Gaps (Post-Phase 4)
 
-### Grader: `coordination_failure` sub-classification (DEFERRED)
-**Current state:** `coordination_failure` means "the architecture's coordination machinery
-never activated at all" — no delegations, no handoffs, no critiques, no tool calls fired.
+### Grader: `coordination_failure` sub-classification (FUTURE WORK — baseline now available)
+**Current state:** `coordination_failure` currently means the decision-making agent did not have
+access to the critical field at the point of final action — confirmed by the grader checking
+`decision_agent_saw_credit_hold`. Sweep results provide a calibration baseline for all four
+architectures across both tasks.
 
-**Gap:** This does not distinguish two meaningfully different failure modes:
-1. **Machinery never fired** — the supervisor/peer/critic loop never started (e.g. first LLM call crashed)
-2. **Machinery fired but produced a wrong delegation/handoff/critique** — e.g. the supervisor delegated
-   to the wrong worker, the peer passed an empty handoff, or the critic approved a hallucinated answer
+**Gap:** The taxonomy does not yet distinguish two meaningfully different failure sub-modes:
+1. **Machinery never fired** — the supervisor/peer/critic loop never started
+2. **Machinery fired but produced a wrong delegation/handoff/critique** — e.g. the peer handoff
+   fired but omitted `credit_hold`; the worker summary ran but compressed it out
 
-These are different stories for the Phase 4 report. A supervision failure where the delegation logic
-is correct but the worker returned bad data is architecturally different from a case where the
-supervisor never even tried to delegate.
+These tell different stories. The `peer_to_peer` 0/5 result on `task_02` is machinery-fired-but-
+wrong (handoff always fires; the rigid schema always drops the field). The distinction between this
+and "machinery never fired" is now empirically testable using the 28-run sweep traces as ground truth.
 
-**Plan:** Before generating the Phase 4 report, add a `coordination_failure_mode` sub-field:
+**Plan:** Add a `coordination_failure_mode` sub-field to `GradeResult`:
 - `machinery_never_fired` — all coordination counters are zero
-- `wrong_delegation` — supervisor delegated but worker produced wrong output (detected via db_correct=False + num_workers_invoked > 0)
-- `handoff_data_loss` — handoff fired but Agent B produced wrong output despite it (num_handoffs > 0 + task_failure)
-- `critic_missed_error` — critique fired but revision still produced wrong output (num_critique_rounds > 0 + task_failure)
+- `handoff_data_loss` — `peer_handoff` fired but `credit_hold_in_handoff=False`
+- `worker_summary_loss` — `worker_finish` fired but `credit_hold_in_worker_summary=False`
+- `critic_missed_error` — critique fired but revision still produced wrong output
 
-Do not add this until we have passing runs of each architecture to calibrate against.
+The 28-run sweep now provides the calibration baseline needed to implement and validate this.
 
 ### peer_to_peer: rigid handoff schema (DELIBERATE DESIGN CHOICE, NOT A BUG)
 **Current state:** The CRM Peer's system prompt hard-codes the handoff format:
@@ -73,10 +78,9 @@ chose a bad format."
 what to include in the handoff and the Ticketing Peer parses free-form context.
 An open-format variant would test a different (and arguably less realistic) failure mode.
 
-**Phase 4 report note:** Results for peer_to_peer on task_02 should be presented as
+**Phase 4 report note:** Results for peer_to_peer on task_02 are presented as
 "rigid-schema peer_to_peer" to preempt the "isn't this just a bad prompt?" objection.
 The schema rigidity is the architectural property under test, not the model's reasoning quality.
 
 **Deferred:** Open-format peer_to_peer variant is future work. Do not add without
 a separate task designed to distinguish schema-rigid failures from reasoning failures.
-

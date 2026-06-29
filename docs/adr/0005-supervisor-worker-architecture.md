@@ -17,6 +17,12 @@ Virtual delegation tools are intercepted at the architecture layer (not by an LL
 ## Trace Events
 Adds: `supervisor_start`, `supervisor_finish`, `worker_start`, `worker_finish`.
 
+## Empirical Results (Phase 4 sweep — 2026-06-27)
+
+**task_01 (Customer Escalation):** 67% pass rate (2/3 trials). The one failure was a `task_failure`: the Ticketing Worker hallucinated a successful `update_ticket` call without actually invoking the tool. This is a general LLM reliability issue, not evidence of information loss at the architectural boundary. With only 3 trials, we cannot reliably distinguish whether this failure rate differs from the `single_agent` baseline; more trials would be required to detect a meaningful difference.
+
+**task_02 (Credit Hold — information asymmetry trap):** 71% pass rate (5/7 trials). The two failures were `coordination_failure`: the CRM Worker's natural-language summary did not include the `credit_hold=True` flag, so the Supervisor never had access to it when making the final ticketing decision. This is probabilistic — whether the field appears in the free-text summary is model-dependent, not guaranteed by the architecture.
+
 ## Consequences
-- **Positive:** Worker specialization prevents tool-namespace confusion. Worker tool errors are isolated from the supervisor's reasoning.
-- **Negative:** Each delegation requires one additional round-trip through the supervisor's LLM, adding latency. Context compression loss is a risk: workers receive only the instruction string, not the full conversation history.
+- **Positive:** Worker specialization prevents tool-namespace confusion. Worker tool errors are isolated from the supervisor's reasoning. The architecture passed `task_02` 71% of the time — better than `peer_to_peer` (0%), though worse than `single_agent` and `debate_critic` (both 100%).
+- **Negative:** Each delegation requires one additional round-trip through the supervisor's LLM, adding latency and LLM call cost (~10 calls per run vs 4 for single_agent). Context compression loss is a confirmed risk: the CRM Worker's free-text summary is the sole channel for passing CRM data to the Supervisor, and field omission is empirically confirmed as the failure mode for `task_02`.
