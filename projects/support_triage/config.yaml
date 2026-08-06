@@ -1,0 +1,87 @@
+# Example project 1 of 2 — a high-volume classification workload.
+#
+# Runs entirely offline against simulated models, so you can see a real
+# leaderboard without an API key. Each `mock:` entry is a deterministic
+# stand-in with a fixed accuracy, latency and (fictional) price, which is also
+# a genuinely useful thing to keep in a real project: it proves your scorers
+# and weights behave before you spend anything.
+#
+#   arena evaluate --project projects/support_triage
+
+project: support_triage
+description: >
+  Route inbound support tickets to one of six queues. Volume is high and the
+  answer is one word, so cost and latency matter nearly as much as accuracy —
+  but a misroute is expensive, so anything under 70% accuracy is unusable.
+
+models:
+  - key: sim_frontier
+    model: mock:frontier
+    label: "Frontier-class (simulated)"
+    params: {mode: flaky, accuracy: 96, latency_ms: 1500}
+    card: {input_usd_per_mtok: 5, output_usd_per_mtok: 25}
+
+  - key: sim_balanced
+    model: mock:balanced
+    label: "Mid-tier (simulated)"
+    params: {mode: flaky, accuracy: 88, latency_ms: 620}
+    card: {input_usd_per_mtok: 3, output_usd_per_mtok: 15}
+
+  - key: sim_small
+    model: mock:small
+    label: "Small/fast (simulated)"
+    params: {mode: flaky, accuracy: 78, latency_ms: 190}
+    card: {input_usd_per_mtok: 1, output_usd_per_mtok: 5}
+
+  - key: sim_tiny
+    model: mock:tiny
+    label: "Tiny (simulated) — fails the accuracy floor"
+    params: {mode: flaky, accuracy: 55, latency_ms: 90}
+    card: {input_usd_per_mtok: 0.25, output_usd_per_mtok: 1.25}
+
+  # Flip `enabled: true` (and export ANTHROPIC_API_KEY) to put real models in
+  # the same run. Models missing credentials are skipped, not failed.
+  - key: opus_5
+    model: claude-opus-5
+    enabled: false
+  - key: haiku_4_5
+    model: claude-haiku-4-5
+    enabled: false
+
+defaults:
+  system: >
+    You are a support ticket router. Reply with exactly one queue name from:
+    billing, technical, account, shipping, refund, spam. No other words.
+  max_tokens: 8
+  temperature: 0
+
+run:
+  trials: 3          # each case three times — routing must be stable, not lucky
+  concurrency: 8
+  timeout_s: 30
+  retries: 1
+
+metrics:
+  weights:
+    accuracy: 0.55
+    cost: 0.25
+    latency: 0.20
+  cost:
+    budget_usd_per_1k_calls: 2.0    # what we can afford at this volume
+  latency:
+    target_ms: 800                  # p50 target for an inline router
+  tie_breaker: accuracy
+
+constraints:
+  min_accuracy: 0.70                # below this a router is worse than round-robin
+  max_latency_p95_ms: 4000
+
+scorers:
+  default: classification
+  options:
+    classification:
+      labels: [billing, technical, account, shipping, refund, spam]
+
+output:
+  dir: results
+  formats: [markdown, json]

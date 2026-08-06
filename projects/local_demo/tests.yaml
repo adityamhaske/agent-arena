@@ -1,0 +1,54 @@
+defaults:
+  eval_type: classification
+
+tests:
+  - id: double_charge
+    input: "I was charged twice for the same order this month. Please sort it out."
+    reference: billing
+    tags: [billing, easy]
+
+  - id: card_declined
+    input: "My card keeps getting declined at checkout but my bank says it's fine."
+    reference: billing
+    tags: [billing, hard]
+
+  - id: app_crash
+    input: "The mobile app closes immediately every time I open the reports tab."
+    reference: technical
+    tags: [technical, easy]
+
+  - id: api_500
+    input: "Your /v2/export endpoint has been returning 500s for the last hour."
+    reference: technical
+    tags: [technical, easy]
+
+  - id: sso_loop
+    input: "SSO sends me back to the login page forever after our IdP migration."
+    reference: technical
+    tags: [technical, hard]
+    weight: 2
+
+  - id: password_reset
+    input: "I can't reset my password, the email never arrives."
+    reference: account
+    tags: [account, easy]
+
+  - id: seat_transfer
+    input: "Our admin left the company. How do I take over the workspace owner seat?"
+    reference: account
+    tags: [account, hard]
+
+  - id: parcel_late
+    input: "Tracking says delivered but nothing arrived. Order #88210."
+    reference: shipping
+    tags: [shipping, easy]
+
+  - id: money_back
+    input: "This isn't what I expected at all. I'd like my money back please."
+    reference: refund
+    tags: [refund, easy]
+
+  - id: crypto_spam
+    input: "CONGRATULATIONS you have won 5 BTC, click here to claim your prize now!!!"
+    reference: spam
+    tags: [spam, easy]

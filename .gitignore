@@ -15,6 +15,18 @@ venv.bak/
 # *.jsonl   <- intentionally NOT ignored
 # *.sqlite  <- intentionally NOT ignored
 
+# ...with two exceptions, which really are artifacts:
+#   - the universal arena's example projects regenerate their results on every
+#     demo run (a representative report is committed at docs/EXAMPLE_REPORT.md)
+#   - eval_db.sqlite is a fixture database run_baseline.py recreates per run
+projects/*/results/
+eval_db.sqlite
+results/eval_db.sqlite
+
+# pytest
+.pytest_cache/
+.coverage
+
 # Secrets — never commit these
 .env
 .env.local

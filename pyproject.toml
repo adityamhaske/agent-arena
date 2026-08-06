@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-arena"
+version = "0.1.0"
+description = "A universal, config-driven arena for picking the right LLM for your project"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+keywords = ["llm", "evaluation", "benchmark", "anthropic", "claude", "agents"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+# The engine itself is stdlib-only. PyYAML is the single dependency, and even
+# that is optional at runtime — JSON config and test files work without it.
+dependencies = ["pyyaml>=6.0"]
+
+[project.optional-dependencies]
+anthropic = ["anthropic>=0.40"]
+openai = ["openai>=1.40"]
+gemini = ["google-generativeai>=0.8"]
+litellm = ["litellm>=1.50"]
+all = [
+    "anthropic>=0.40",
+    "openai>=1.40",
+    "google-generativeai>=0.8",
+    "litellm>=1.50",
+]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+arena = "agent_arena.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["agent_arena*"]
+
+[tool.setuptools.package-data]
+agent_arena = ["connectors/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Our `TestCase` dataclass is a domain object, not a test class — stop pytest
+# trying to collect it (and anything else that merely starts with "Test").
+python_classes = ["*Tests"]
+filterwarnings = ["error::DeprecationWarning"]

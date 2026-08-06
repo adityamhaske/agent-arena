@@ -1,0 +1,145 @@
+# Agent Arena project config — copy this folder (or run `arena init <path>`)
+# for every project you want to pick a model for.
+#
+# Nothing in the engine knows about your project. This file, and the test
+# files next to it, are the whole contract.
+
+project: my_project
+description: >
+  One or two sentences on what this project asks a model to do, so the
+  generated report explains itself six months from now.
+
+# ---------------------------------------------------------------------------
+# Who is competing
+# ---------------------------------------------------------------------------
+# A bare string is enough when the model id is unambiguous — the provider is
+# inferred (claude-* → anthropic, gpt-* → openai, gemini-* → gemini,
+# mock:* → the offline stand-in, vendor/model → LiteLLM).
+models:
+  # A deterministic offline stand-in, so this project runs the moment you
+  # create it — no API key, no spend. Keep it: a synthetic baseline is a cheap
+  # way to prove your scorers and weights behave before a real sweep.
+  - key: baseline_sim
+    model: mock:baseline
+    label: "Simulated baseline"
+    params: {mode: flaky, accuracy: 90, latency_ms: 400}
+    card: {input_usd_per_mtok: 1, output_usd_per_mtok: 5}
+
+  # Real models. Each is skipped with a note (not failed) until its API key is
+  # exported, so you can add them one at a time.
+  - claude-opus-5
+  - claude-sonnet-5
+  - claude-haiku-4-5
+
+  # The long form gives you a stable report key, per-model generation params,
+  # a different provider, or your own price/capability facts.
+  # - key: opus_low_effort
+  #   model: claude-opus-5
+  #   label: "Opus 5 (low effort)"
+  #   params:
+  #     output_config: {effort: low}
+  #
+  # - key: local_llama
+  #   model: ollama/llama3.3
+  #   provider: litellm
+  #   api_base: http://localhost:11434
+  #   card:                      # facts the shipped catalog cannot know
+  #     input_usd_per_mtok: 0
+  #     output_usd_per_mtok: 0
+  #     context_tokens: 131072
+  #     features: [function_calling, streaming]
+  #     privacy: {on_prem: true, training_opt_out: true, dpa: true}
+
+# Applied to every call unless a test case overrides it.
+defaults:
+  system: "You are a careful assistant. Answer concisely."
+  max_tokens: 256
+  temperature: 0
+
+run:
+  trials: 1            # repeat each case N times to measure variance
+  concurrency: 4
+  timeout_s: 60
+  retries: 2
+  retry_backoff_s: 2
+
+# ---------------------------------------------------------------------------
+# What "best" means for THIS project
+# ---------------------------------------------------------------------------
+# Weights are normalised, so these are relative. Any builtin metric
+# (accuracy, pass_rate, reliability, cost, latency, latency_p95, tokens) or
+# any custom metric your scorers emit can be weighted by name.
+metrics:
+  weights:
+    accuracy: 0.6
+    cost: 0.2
+    latency: 0.2
+
+  # Without a target, a metric is scaled min-max across the field, so the
+  # ranking only says "cheaper than the others". Give a target and the score
+  # becomes absolute: at or under budget scores 1.0.
+  cost:
+    budget_usd_per_1k_calls: 5.0
+  latency:
+    target_ms: 2000
+
+  tie_breaker: accuracy
+
+# ---------------------------------------------------------------------------
+# Hard gates — a model failing any of these is disqualified, not penalised
+# ---------------------------------------------------------------------------
+constraints:
+  # Set an accuracy floor once your test cases are real — below it a model is
+  # not "worse", it is unusable, and should be disqualified rather than ranked.
+  # min_accuracy: 0.70
+  # max_error_rate: 0.05
+  # max_latency_p95_ms: 4000
+  # max_cost_per_1k_calls_usd: 10
+
+  deployment:
+    required_features: [function_calling]   # structured_outputs, vision, batch, …
+    # min_context_tokens: 200000
+
+  # Privacy posture is a property of YOUR contract and platform, not of the
+  # model, so the shipped catalog declares almost none of it. Declare what you
+  # have verified under `pricing.models.<id>.privacy` and then require it here.
+  # privacy:
+  #   required: [dpa, training_opt_out]
+
+# ---------------------------------------------------------------------------
+# Test discovery
+# ---------------------------------------------------------------------------
+# Omit this entirely and every test*.{yaml,json,jsonl} beside this file, plus
+# everything under tests/, is picked up.
+# tests:
+#   paths: [tests.yaml]
+#   tags: [smoke]      # only run cases carrying these tags
+#   limit: 50
+
+scorers:
+  default: exact_match      # used when a case names no eval_type
+  paths: [scorers]          # a scorers/ folder is picked up automatically too
+  options:
+    semantic:
+      threshold: 0.8
+
+# Needed only if some cases use eval_type: llm_judge
+# judge:
+#   model: claude-opus-5
+#   max_tokens: 512
+
+# Optional escape hatches — see hooks.py
+# hooks:
+#   post_process: "hooks.py:post_process"
+#   pre_request: "hooks.py:pre_request"
+
+# Your own prices and capability facts, layered over the shipped catalog.
+# pricing:
+#   models:
+#     claude-sonnet-5:
+#       input_usd_per_mtok: 2.0     # e.g. the introductory rate
+#       output_usd_per_mtok: 10.0
+
+output:
+  dir: results
+  formats: [markdown, json]

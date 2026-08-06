@@ -1,0 +1,268 @@
+{
+  "as_of": "2026-06-24",
+  "currency": "USD",
+  "note": [
+    "Prices are per million tokens for first-party APIs. This catalog ships only",
+    "entries the maintainers can source; a model that is not listed gets no cost",
+    "metric rather than a guessed one. Supply your own numbers with a project",
+    "pricing file (pricing.path) or per-model `card:` overrides, and always",
+    "verify against your provider's current price list before making a decision",
+    "on cost.",
+    "",
+    "`privacy` is deliberately empty for real models: whether a DPA is in place,",
+    "whether training opt-out applies, and whether zero-data-retention is enabled",
+    "are properties of YOUR contract and platform, not of the model. Declare them",
+    "in your project's pricing file. The one exception is a documented model-level",
+    "restriction, recorded below as an explicit false."
+  ],
+  "aliases": {
+    "claude-opus-latest": "claude-opus-5",
+    "claude-sonnet-latest": "claude-sonnet-5",
+    "claude-haiku-latest": "claude-haiku-4-5"
+  },
+  "models": {
+    "claude-fable-5": {
+      "provider": "anthropic",
+      "display_name": "Claude Fable 5",
+      "input_usd_per_mtok": 10.0,
+      "output_usd_per_mtok": 50.0,
+      "cache_read_usd_per_mtok": 1.0,
+      "cache_write_usd_per_mtok": 12.5,
+      "context_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "features": [
+        "function_calling",
+        "structured_outputs",
+        "vision",
+        "streaming",
+        "prompt_caching",
+        "batch",
+        "adaptive_thinking",
+        "effort",
+        "long_context"
+      ],
+      "privacy": {
+        "zero_data_retention": false
+      },
+      "notes": "Thinking is always on; requires 30-day data retention (not available under ZDR). Sampling params and prefill are rejected."
+    },
+    "claude-mythos-5": {
+      "provider": "anthropic",
+      "display_name": "Claude Mythos 5",
+      "input_usd_per_mtok": 10.0,
+      "output_usd_per_mtok": 50.0,
+      "cache_read_usd_per_mtok": 1.0,
+      "cache_write_usd_per_mtok": 12.5,
+      "context_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "features": [
+        "function_calling",
+        "structured_outputs",
+        "vision",
+        "streaming",
+        "prompt_caching",
+        "batch",
+        "adaptive_thinking",
+        "effort",
+        "long_context"
+      ],
+      "privacy": {
+        "zero_data_retention": false
+      },
+      "notes": "Project Glasswing only. Same surface as Claude Fable 5."
+    },
+    "claude-opus-5": {
+      "provider": "anthropic",
+      "display_name": "Claude Opus 5",
+      "input_usd_per_mtok": 5.0,
+      "output_usd_per_mtok": 25.0,
+      "cache_read_usd_per_mtok": 0.5,
+      "cache_write_usd_per_mtok": 6.25,
+      "context_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "features": [
+        "function_calling",
+        "structured_outputs",
+        "vision",
+        "streaming",
+        "prompt_caching",
+        "batch",
+        "adaptive_thinking",
+        "effort",
+        "long_context"
+      ],
+      "notes": "Thinking on by default. Sampling params rejected. Prompt-cache minimum is 512 tokens."
+    },
+    "claude-opus-4-8": {
+      "provider": "anthropic",
+      "display_name": "Claude Opus 4.8",
+      "input_usd_per_mtok": 5.0,
+      "output_usd_per_mtok": 25.0,
+      "cache_read_usd_per_mtok": 0.5,
+      "cache_write_usd_per_mtok": 6.25,
+      "context_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "features": [
+        "function_calling",
+        "structured_outputs",
+        "vision",
+        "streaming",
+        "prompt_caching",
+        "batch",
+        "adaptive_thinking",
+        "effort",
+        "long_context"
+      ],
+      "notes": "Sampling params rejected; adaptive thinking must be set explicitly."
+    },
+    "claude-opus-4-7": {
+      "provider": "anthropic",
+      "display_name": "Claude Opus 4.7",
+      "input_usd_per_mtok": 5.0,
+      "output_usd_per_mtok": 25.0,
+      "cache_read_usd_per_mtok": 0.5,
+      "cache_write_usd_per_mtok": 6.25,
+      "context_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "features": [
+        "function_calling",
+        "structured_outputs",
+        "vision",
+        "streaming",
+        "prompt_caching",
+        "batch",
+        "adaptive_thinking",
+        "effort",
+        "long_context"
+      ],
+      "notes": "Sampling params rejected."
+    },
+    "claude-opus-4-6": {
+      "provider": "anthropic",
+      "display_name": "Claude Opus 4.6",
+      "input_usd_per_mtok": 5.0,
+      "output_usd_per_mtok": 25.0,
+      "cache_read_usd_per_mtok": 0.5,
+      "cache_write_usd_per_mtok": 6.25,
+      "context_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "features": [
+        "function_calling",
+        "structured_outputs",
+        "vision",
+        "streaming",
+        "prompt_caching",
+        "batch",
+        "adaptive_thinking",
+        "effort",
+        "long_context"
+      ]
+    },
+    "claude-sonnet-5": {
+      "provider": "anthropic",
+      "display_name": "Claude Sonnet 5",
+      "input_usd_per_mtok": 3.0,
+      "output_usd_per_mtok": 15.0,
+      "cache_read_usd_per_mtok": 0.3,
+      "cache_write_usd_per_mtok": 3.75,
+      "context_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "features": [
+        "function_calling",
+        "structured_outputs",
+        "vision",
+        "streaming",
+        "prompt_caching",
+        "batch",
+        "adaptive_thinking",
+        "effort",
+        "long_context"
+      ],
+      "notes": "Introductory pricing of 2.00 / 10.00 per MTok applies through 2026-08-31; override in your pricing file if you want the run costed at the intro rate."
+    },
+    "claude-sonnet-4-6": {
+      "provider": "anthropic",
+      "display_name": "Claude Sonnet 4.6",
+      "input_usd_per_mtok": 3.0,
+      "output_usd_per_mtok": 15.0,
+      "cache_read_usd_per_mtok": 0.3,
+      "cache_write_usd_per_mtok": 3.75,
+      "context_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "features": [
+        "function_calling",
+        "structured_outputs",
+        "vision",
+        "streaming",
+        "prompt_caching",
+        "batch",
+        "adaptive_thinking",
+        "effort",
+        "long_context"
+      ]
+    },
+    "claude-haiku-4-5": {
+      "provider": "anthropic",
+      "display_name": "Claude Haiku 4.5",
+      "input_usd_per_mtok": 1.0,
+      "output_usd_per_mtok": 5.0,
+      "cache_read_usd_per_mtok": 0.1,
+      "cache_write_usd_per_mtok": 1.25,
+      "context_tokens": 200000,
+      "max_output_tokens": 64000,
+      "features": [
+        "function_calling",
+        "structured_outputs",
+        "vision",
+        "streaming",
+        "prompt_caching",
+        "batch"
+      ],
+      "notes": "Extended thinking uses budget_tokens; no effort parameter."
+    },
+    "local": {
+      "provider": "local",
+      "display_name": "Locally hosted model",
+      "input_usd_per_mtok": 0.0,
+      "output_usd_per_mtok": 0.0,
+      "features": [
+        "function_calling",
+        "structured_outputs",
+        "streaming"
+      ],
+      "privacy": {
+        "on_prem": true,
+        "training_opt_out": true,
+        "zero_data_retention": true,
+        "dpa": true
+      },
+      "notes": "Fallback card for any model served from your own machine. Marginal API cost is zero and no data leaves the host, which is why local models win privacy gates outright. Context window and feature support vary by model — override with a `card:` block if you constrain on them."
+    },
+    "mock": {
+      "provider": "mock",
+      "display_name": "Offline mock",
+      "input_usd_per_mtok": 0.0,
+      "output_usd_per_mtok": 0.0,
+      "context_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "features": [
+        "function_calling",
+        "structured_outputs",
+        "vision",
+        "streaming",
+        "prompt_caching",
+        "batch",
+        "adaptive_thinking",
+        "effort",
+        "long_context"
+      ],
+      "privacy": {
+        "dpa": true,
+        "training_opt_out": true,
+        "zero_data_retention": true,
+        "on_prem": true
+      },
+      "notes": "Runs locally, costs nothing, and never leaves the machine."
+    }
+  }
+}
