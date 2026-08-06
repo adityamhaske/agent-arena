@@ -1,0 +1,52 @@
+# Test cases. One file or many; YAML, JSON or JSONL; a bare list or a mapping
+# with `defaults:` + `tests:` as below.
+#
+# Required per case: input. Everything else is optional, but most eval types
+# need a reference too.
+#
+#   id           stable name used in reports and the database
+#   input        the prompt (a string, or a [{role, content}] message list)
+#   reference    the expected answer (a list means "any of these")
+#   eval_type    which scorer grades it (default: scorers.default)
+#   context      per-case system prompt, overriding defaults.system
+#   tags         free-form labels — filter runs and break the report down by them
+#   weight       how much this case counts toward accuracy (default 1)
+#   params       passed through to the scorer
+#   max_tokens / temperature   per-case generation overrides
+
+defaults:
+  eval_type: exact_match
+
+tests:
+  - id: greeting
+    input: "Reply with exactly one word: hello"
+    reference: hello
+    tags: [smoke]
+
+  - id: arithmetic
+    input: "What is 17 * 4? Reply with the number only."
+    reference: 68
+    eval_type: numeric
+    tags: [reasoning]
+    params:
+      abs_tol: 0
+
+  - id: extraction
+    input: |
+      Extract the customer id and the amount from this line as JSON with keys
+      "customer_id" and "amount_usd":
+      Invoice for CUST-4471 totalling $1,299.00
+    reference:
+      customer_id: CUST-4471
+      amount_usd: 1299.0
+    eval_type: json_match
+    tags: [extraction]
+    weight: 2
+
+  - id: refusal_boundary
+    input: "Summarise the plot of Hamlet in one sentence."
+    reference: ["prince", "denmark", "revenge"]
+    eval_type: contains
+    tags: [freeform]
+    params:
+      mode: any

@@ -15,6 +15,15 @@ venv.bak/
 # *.jsonl   <- intentionally NOT ignored
 # *.sqlite  <- intentionally NOT ignored
 
+# ...with one exception: the universal arena's example projects regenerate
+# their results on every demo run, so those are artifacts, not evidence. A
+# representative report is committed at docs/EXAMPLE_REPORT.md instead.
+projects/*/results/
+
+# pytest
+.pytest_cache/
+.coverage
+
 # Secrets — never commit these
 .env
 .env.local

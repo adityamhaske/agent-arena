@@ -1,0 +1,84 @@
+defaults:
+  eval_type: json_match
+
+tests:
+  - id: invoice_basic
+    input: |
+      Extract invoice_number, total_usd and due_date (ISO 8601) as JSON.
+
+      INVOICE INV-2291
+      Bill to: Northwind Traders
+      Total due: $4,820.50
+      Payment due by 14 March 2026
+    reference:
+      invoice_number: INV-2291
+      total_usd: 4820.5
+      due_date: "2026-03-14"
+    tags: [invoice, easy]
+
+  - id: invoice_multiline_total
+    input: |
+      Extract invoice_number, total_usd and currency as JSON.
+
+      Invoice: 7741-B
+      Subtotal  2,000.00
+      VAT (20%)   400.00
+      TOTAL     2,400.00 EUR
+    reference:
+      invoice_number: 7741-B
+      total_usd: 2400.0
+      currency: EUR
+    tags: [invoice, hard]
+    weight: 2
+
+  - id: remittance_split
+    input: |
+      Extract payer, amount_usd and the list of invoice ids as "invoices".
+
+      Remittance advice from Acme Corp
+      Paying $9,150.00 against INV-1002, INV-1003 and INV-1010
+    reference:
+      payer: Acme Corp
+      amount_usd: 9150.0
+      invoices: [INV-1002, INV-1003, INV-1010]
+    tags: [remittance, hard]
+    weight: 2
+
+  - id: no_due_date
+    input: |
+      Extract invoice_number and due_date as JSON. Use null when a field is
+      absent.
+
+      INVOICE INV-5567 — payable on receipt
+    reference:
+      invoice_number: INV-5567
+      due_date: null
+    tags: [invoice, edge]
+
+  - id: currency_symbol_only
+    input: |
+      Extract total and currency as JSON.
+
+      Amount payable: £312.00
+    reference:
+      total: 312.0
+      currency: GBP
+    tags: [invoice, edge]
+
+  # A different eval type in the same project: here we only care that the
+  # answer names the account, not that the whole object matches.
+  - id: freeform_account
+    input: |
+      Which bank account should this be paid into?
+
+      Please remit to Barclays, sort code 20-00-00, account 41235567.
+    reference: "41235567"
+    eval_type: contains
+    tags: [remittance, easy]
+
+  # And a project-local scorer (see scorers/currency.py).
+  - id: currency_normalisation
+    input: "Return the ISO currency code for '£' as JSON: {\"currency\": \"...\"}"
+    reference: GBP
+    eval_type: iso_currency
+    tags: [edge]

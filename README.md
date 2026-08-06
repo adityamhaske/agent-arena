@@ -1,5 +1,26 @@
 # Agent Arena
 
+This repository holds two independent evaluation systems that share a
+philosophy — structured evidence over vibes — and answer opposite questions.
+
+| | Question it answers | What varies | What is held fixed | Where |
+|---|---|---|---|---|
+| **Multi-agent harness** | Does splitting a task across agents lose information at the handoff? | The architecture | The model, the task | `core/`, `evals/`, `run_all.py` — this README |
+| **Universal arena** | Which model should *my* project use, on *my* criteria? | The model | The task | `agent_arena/`, `projects/` — **[docs/UNIVERSAL_ARENA.md](docs/UNIVERSAL_ARENA.md)** |
+
+If you came here to choose a model for your own project, start with the
+[Universal Arena guide](docs/UNIVERSAL_ARENA.md):
+
+```bash
+pip install -e .
+arena evaluate --project projects/support_triage   # runs offline, no API key needed
+arena init projects/my_project                     # then point it at your own work
+```
+
+The rest of this README describes the original multi-agent study.
+
+---
+
 ## What is this project?
 Imagine assigning a complex task to a single highly capable person, versus splitting that same task across a team of specialists. Does dividing the work introduce new kinds of errors? This project explores that question for AI. We built a testing ground to see what happens when multiple AI "agents" try to collaborate to solve customer support tickets, compared to having just one agent do everything itself.
 
@@ -80,6 +101,7 @@ python run_all.py --providers gemini --trials 3 --sw-task02-trials 7
 ```
 
 ## Documentation
+- **[Universal Arena](docs/UNIVERSAL_ARENA.md)** — the config-driven model-selection harness (`agent_arena/`), plus a [sample report](docs/EXAMPLE_REPORT.md)
 - **[Project Spec](docs/PROJECT_SPEC.md)**
 - **[Architecture](docs/ARCHITECTURE.md)**
 - **[Trace Schema](docs/TRACE_SCHEMA.md)**

@@ -1,0 +1,103 @@
+# Example project 2 of 2 — structured extraction from documents.
+#
+# Deliberately shaped nothing like `support_triage`, to show that the same
+# engine covers both with no code changes: different eval types, a
+# project-local scorer, a post-process hook, a custom metric in the weights,
+# and hard deployment/privacy gates.
+#
+#   arena evaluate --project projects/doc_extraction
+
+project: doc_extraction
+description: >
+  Pull structured fields out of invoice and remittance text. Output feeds a
+  ledger, so a wrong number is worse than a slow answer: accuracy dominates,
+  latency barely registers, and the model must support structured outputs.
+
+models:
+  - key: sim_strict
+    model: mock:strict
+    label: "Schema-faithful (simulated)"
+    params: {mode: flaky, accuracy: 94, latency_ms: 2100}
+    card: {input_usd_per_mtok: 5, output_usd_per_mtok: 25}
+
+  - key: sim_chatty
+    model: mock:chatty
+    label: "Chatty (simulated) — wraps JSON in prose"
+    params: {mode: flaky, accuracy: 85, latency_ms: 1300}
+    card: {input_usd_per_mtok: 3, output_usd_per_mtok: 15}
+
+  - key: sim_cheap
+    model: mock:cheap
+    label: "Budget (simulated)"
+    params: {mode: flaky, accuracy: 68, latency_ms: 450}
+    card: {input_usd_per_mtok: 1, output_usd_per_mtok: 5}
+
+  - key: sim_no_json
+    model: mock:no-json
+    label: "No structured output support (simulated)"
+    params: {mode: flaky, accuracy: 91, latency_ms: 500}
+    # Disqualified below by constraints.deployment, however well it scores.
+    card:
+      input_usd_per_mtok: 0.5
+      output_usd_per_mtok: 2.5
+      features: [streaming]
+
+defaults:
+  system: >
+    Extract the requested fields. Reply with a single JSON object and nothing
+    else — no prose, no markdown fence.
+  max_tokens: 400
+  temperature: 0
+
+run:
+  trials: 2
+  concurrency: 6
+  timeout_s: 60
+
+metrics:
+  weights:
+    accuracy: 0.65
+    reliability: 0.10     # a call that fails is a document that needs a human
+    cost: 0.15
+    latency: 0.10
+  cost:
+    budget_usd_per_1k_calls: 25.0
+  latency:
+    target_ms: 3000
+
+constraints:
+  min_accuracy: 0.70
+  deployment:
+    required_features: [structured_outputs]
+  privacy:
+    # Declared per model under `pricing:` below. Nothing is assumed: a model
+    # with no privacy facts on its card fails this gate rather than passing
+    # silently, which is the safe direction for a compliance requirement.
+    required: [training_opt_out]
+
+scorers:
+  default: json_match
+  paths: [scorers]
+  options:
+    json_match:
+      mode: subset          # extra keys are fine; every reference key must match
+
+hooks:
+  post_process: "hooks.py:post_process"
+
+# Facts the shipped catalog cannot know: your negotiated prices, and what your
+# contract with each provider actually covers. These layer over the catalog.
+pricing:
+  models:
+    mock:strict:
+      privacy: {training_opt_out: true, dpa: true}
+    mock:chatty:
+      privacy: {training_opt_out: true, dpa: true}
+    mock:cheap:
+      privacy: {training_opt_out: true, dpa: true}
+    mock:no-json:
+      privacy: {training_opt_out: true, dpa: true}
+
+output:
+  dir: results
+  formats: [markdown, json]
