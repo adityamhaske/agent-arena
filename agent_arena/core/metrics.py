@@ -27,6 +27,7 @@ import math
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Sequence
 
+from ..connectors.registry import resolve_provider
 from .config import ProjectConfig
 
 _EPSILON = 1e-12
@@ -333,11 +334,12 @@ def build_leaderboard(
 
     for spec in model_specs:
         results = results_by_model.get(spec.key, [])
-        card = price_book.get(spec.model) if price_book else None
+        provider = resolve_provider(spec)
+        card = price_book.get(spec.model, provider=provider) if price_book else None
         entry = ModelScore(
             key=spec.key,
             model=spec.model,
-            provider=(spec.provider or (card.provider if card else "") or ""),
+            provider=(provider or (card.provider if card else "") or ""),
             display=spec.display,
             card=card,
         )
@@ -376,7 +378,7 @@ def build_leaderboard(
                 )
 
     board.entries = _rank(list(entries.values()), config.metrics.tie_breaker)
-    board.notes = _leaderboard_notes(config, board, aggregates)
+    board.notes = _leaderboard_notes(config, board, aggregates, results_by_model)
     return board
 
 
@@ -540,7 +542,10 @@ def _rank(entries: list[ModelScore], tie_breaker: str) -> list[ModelScore]:
 
 
 def _leaderboard_notes(
-    config: ProjectConfig, board: Leaderboard, aggregates: dict[str, dict[str, Any]]
+    config: ProjectConfig,
+    board: Leaderboard,
+    aggregates: dict[str, dict[str, Any]],
+    results_by_model: dict[str, Sequence[Any]],
 ) -> list[str]:
     notes: list[str] = []
 
@@ -575,8 +580,41 @@ def _leaderboard_notes(
     if len(ranked) >= 2 and ranked[0].composite and ranked[1].composite:
         margin = ranked[0].composite - ranked[1].composite
         if margin < 0.02:
+            # Telling someone to run more trials is useless advice when the
+            # trials they already ran were identical — then the sweep is
+            # under-powered on *cases*, not on repeats.
+            varied = _trials_varied(results_by_model)
+            if varied is False:
+                remedy = (
+                    "Repeated trials produced identical scores, so more trials will not "
+                    "separate them — add test cases instead."
+                )
+            else:
+                remedy = "Raise run.trials or add test cases before trusting the order."
             notes.append(
                 f"{ranked[0].key} beat {ranked[1].key} by {margin:.3f} — within noise for a "
-                "small sweep. Raise run.trials or add test cases before trusting the order."
+                f"small sweep. {remedy}"
             )
     return notes
+
+
+def _trials_varied(results_by_model: dict[str, Sequence[Any]]) -> bool | None:
+    """Did repeating a case ever change its score?
+
+    ``None`` when nothing was repeated, ``False`` when every repeat matched
+    (deterministic at this temperature), ``True`` when outputs moved.
+    """
+    first_seen: dict[tuple[str, str], float] = {}
+    repeated = False
+    for results in results_by_model.values():
+        for result in results:
+            if result.status != "ok" or result.score is None:
+                continue
+            key = (result.model_key, result.test_id)
+            if key in first_seen:
+                repeated = True
+                if abs(first_seen[key] - float(result.score)) > 1e-9:
+                    return True
+            else:
+                first_seen[key] = float(result.score)
+    return False if repeated else None

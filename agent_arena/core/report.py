@@ -277,10 +277,8 @@ class Report:
 
     # ---- json ---------------------------------------------------------
 
-    def json(self, include_results: bool = True) -> str:
+    def json(self) -> str:
         payload = self.run.to_dict()
-        if not include_results:
-            payload.pop("results", None)
         payload["generated_at"] = datetime.now(timezone.utc).isoformat()
         return json.dumps(payload, indent=2, default=str)
 

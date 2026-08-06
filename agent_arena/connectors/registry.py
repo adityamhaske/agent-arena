@@ -18,6 +18,7 @@ from typing import Any, Callable
 
 from ..core.errors import ConnectorError
 from .base import Connector
+from .local import LocalConnector
 from .mock import MockConnector
 from .providers import (
     AnthropicConnector,
@@ -32,6 +33,9 @@ CONNECTORS: dict[str, type[Connector]] = {
     "gemini": GeminiConnector,
     "google": GeminiConnector,
     "litellm": LiteLLMConnector,
+    "local": LocalConnector,
+    "ollama": LocalConnector,
+    "lmstudio": LocalConnector,
     "mock": MockConnector,
 }
 
@@ -40,6 +44,10 @@ _PREFIX_RULES: tuple[tuple[tuple[str, ...], str], ...] = (
     (("gpt-", "gpt.", "o1-", "o3-", "o4-", "chatgpt", "text-davinci"), "openai"),
     (("gemini-", "models/gemini"), "gemini"),
     (("mock:", "mock-"), "mock"),
+    # Local runtimes: routed to the stdlib HTTP connector, so evaluating a
+    # model on your own machine needs no SDK installed at all.
+    (("ollama/", "local/", "lmstudio/", "llamacpp/", "vllm/"), "local"),
+    (("llama", "qwen", "mistral", "mixtral", "phi", "gemma", "deepseek", "codellama"), "local"),
 )
 
 _API_KEY_ENVS = {
@@ -59,7 +67,7 @@ def infer_provider(model: str) -> str:
         if lowered.startswith(prefixes):
             return provider
     if "/" in model:
-        # bedrock/…, together_ai/…, ollama/… — LiteLLM's own namespacing.
+        # bedrock/…, together_ai/…, azure/… — LiteLLM's own namespacing.
         return "litellm"
     raise ConnectorError(
         f"cannot infer a provider for model {model!r}. Set it explicitly:\n"
@@ -76,7 +84,7 @@ def register_connector(name: str, factory: Callable[..., Connector]) -> None:
 
 def build_connector(spec: Any, defaults: dict[str, Any] | None = None) -> Connector:
     """Instantiate the connector for one :class:`~agent_arena.core.config.ModelSpec`."""
-    provider = spec.provider or infer_provider(spec.model)
+    provider = resolve_provider(spec, strict=True)
     factory = CONNECTORS.get(provider)
     if factory is None:
         raise ConnectorError(
@@ -116,18 +124,32 @@ def build_connector(spec: Any, defaults: dict[str, Any] | None = None) -> Connec
         ) from exc
 
 
+def resolve_provider(spec: Any, strict: bool = False) -> str | None:
+    """The provider a model spec will use, without constructing a connector.
+
+    Returns ``None`` rather than raising when the id is unrecognisable (unless
+    ``strict``), so reporting paths can describe a model they could not route.
+    """
+    if getattr(spec, "provider", None):
+        return spec.provider
+    try:
+        return infer_provider(spec.model)
+    except ConnectorError:
+        # An explicit endpoint is itself the answer: you gave us a URL, so this
+        # is an OpenAI-compatible server and the model name can be anything.
+        if getattr(spec, "api_base", None):
+            return "local"
+        if strict:
+            raise
+        return None
+
+
 def requires_api_key(spec: Any) -> str | None:
     """The env var this model needs, or ``None`` when it needs no credentials."""
-    provider = spec.provider or _safe_infer(spec.model)
-    if provider in (None, "mock"):
+    provider = resolve_provider(spec)
+    # Local and mock models run without credentials by definition.
+    if provider in (None, "mock", "local", "ollama", "lmstudio"):
         return None
     if spec.api_key_env:
         return spec.api_key_env
     return _API_KEY_ENVS.get(provider)
-
-
-def _safe_infer(model: str) -> str | None:
-    try:
-        return infer_provider(model)
-    except ConnectorError:
-        return None

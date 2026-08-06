@@ -18,7 +18,7 @@ from typing import Any, Callable, Sequence
 
 from ..connectors.base import GenerationRequest
 from ..connectors.pricing import PriceBook, build_price_book
-from ..connectors.registry import build_connector, requires_api_key
+from ..connectors.registry import build_connector, requires_api_key, resolve_provider
 from ..scorers.base import ScoringContext
 from ..scorers.registry import ScorerRegistry, build_registry
 from .config import ModelSpec, ProjectConfig, load_config
@@ -106,9 +106,6 @@ class RunResult:
     @property
     def error_count(self) -> int:
         return sum(1 for r in self.results if r.status != "ok")
-
-    def results_for(self, model_key: str) -> list[CallResult]:
-        return [r for r in self.results if r.model_key == model_key]
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -219,6 +216,19 @@ class ArenaRunner:
 
                 if not os.environ.get(env_var):
                     skipped[spec.key] = f"{env_var} is not set"
+                    continue
+
+            # A local server that is not running is the same class of problem
+            # as a missing API key: skip it with a reason instead of emitting
+            # one connection error per test case.
+            if resolve_provider(spec) in ("local", "ollama", "lmstudio"):
+                connector = self._connector_for(spec)
+                try:
+                    reason = connector.healthcheck()
+                finally:
+                    connector.close()
+                if reason:
+                    skipped[spec.key] = reason
         return skipped
 
     # ---- execution ----------------------------------------------------
@@ -419,7 +429,7 @@ class ArenaRunner:
         result.latency_ms = generation.latency_ms
         result.input_tokens = generation.input_tokens
         result.output_tokens = generation.output_tokens
-        card = self.price_book.get(spec.model)
+        card = self.price_book.get(spec.model, provider=connector.provider)
         result.cost_usd = card.cost_usd(
             generation.input_tokens,
             generation.output_tokens,

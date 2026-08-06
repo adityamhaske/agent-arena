@@ -1,0 +1,94 @@
+# Local-model demo — compare models running on your own machine.
+#
+# Two ways to run it:
+#
+#   A. With the stand-in server (no model download needed):
+#        python demo/fake_local_server.py --port 11434
+#        arena evaluate --project projects/local_demo
+#
+#   B. With real Ollama models:
+#        ollama serve
+#        ollama pull llama3.2 && ollama pull qwen2.5:7b
+#        arena evaluate --project projects/local_demo -p ... --models llama32 qwen25
+#      (uncomment the two entries at the bottom of `models:` first)
+#
+# Nothing about the arena changes between A and B — same connector, same HTTP
+# call. The stand-in just answers faster and costs no disk.
+
+project: local_demo
+description: >
+  Route support tickets using models hosted on this machine. Local inference is
+  free per call, so the decision is accuracy against latency — and whether a
+  small model is good enough to avoid sending customer data off the box at all.
+
+models:
+  # --- served by demo/fake_local_server.py -------------------------------
+  - key: local_large
+    model: demo-large
+    label: "Local large"
+    api_base: http://localhost:11434/v1
+
+  - key: local_medium
+    model: demo-medium
+    label: "Local medium"
+    api_base: http://localhost:11434/v1
+
+  - key: local_small
+    model: demo-small
+    label: "Local small"
+    api_base: http://localhost:11434/v1
+
+  # --- real Ollama models: uncomment after `ollama pull` -----------------
+  # Provider is inferred from the name — no `provider:` line needed, and no
+  # Python SDK to install. Unreachable or un-pulled models are skipped with a
+  # reason rather than failing every test case.
+  #
+  # - key: llama32
+  #   model: llama3.2
+  # - key: qwen25
+  #   model: qwen2.5:7b
+  # - key: phi4
+  #   model: phi4-mini
+
+  # A hosted model for comparison. Skipped automatically unless
+  # ANTHROPIC_API_KEY is set, so this file runs either way.
+  - key: haiku
+    model: claude-haiku-4-5
+    label: "Claude Haiku 4.5 (hosted, for contrast)"
+
+defaults:
+  system: >
+    You are a support ticket router. Reply with exactly one queue name from:
+    billing, technical, account, shipping, refund, spam. No other words, no
+    punctuation, no explanation.
+  max_tokens: 10
+  temperature: 0
+
+run:
+  trials: 2
+  concurrency: 4     # local servers are usually single-GPU; keep this modest
+  timeout_s: 120     # first call after a model load can be slow
+  retries: 1
+
+metrics:
+  weights:
+    accuracy: 0.60
+    latency: 0.30
+    cost: 0.10       # local inference is $0/call, so this mostly rewards staying local
+  latency:
+    target_ms: 2000
+  cost:
+    budget_usd_per_1k_calls: 1.0
+
+constraints:
+  min_accuracy: 0.60
+
+scorers:
+  default: classification
+  options:
+    classification:
+      labels: [billing, technical, account, shipping, refund, spam]
+
+output:
+  dir: results
+  formats: [markdown, json]

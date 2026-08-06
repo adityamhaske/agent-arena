@@ -300,3 +300,31 @@ def test_notes_flag_a_photo_finish(tmp_path: Path) -> None:
     board = build_leaderboard(config, results, [Spec("a"), Spec("b")], PriceBook())
 
     assert any("within noise" in note for note in board.notes)
+    assert any("Raise run.trials" in note for note in board.notes)
+
+
+def test_photo_finish_advice_accounts_for_deterministic_trials(tmp_path: Path) -> None:
+    """Telling someone to run more trials is useless when the trials they
+    already ran were identical."""
+    config = make_config(tmp_path)
+    results = {
+        "a": [result("a", "t", score=0.900, trial=n) for n in (1, 2, 3)],
+        "b": [result("b", "t", score=0.895, trial=n) for n in (1, 2, 3)],
+    }
+    board = build_leaderboard(config, results, [Spec("a"), Spec("b")], PriceBook())
+    note = next(n for n in board.notes if "within noise" in n)
+
+    assert "add test cases instead" in note
+    assert "Raise run.trials" not in note
+
+
+def test_photo_finish_advice_still_suggests_trials_when_outputs_move(tmp_path: Path) -> None:
+    config = make_config(tmp_path)
+    results = {
+        "a": [result("a", "t", score=1.0, trial=1), result("a", "t", score=0.8, trial=2)],
+        "b": [result("b", "t", score=0.9, trial=1), result("b", "t", score=0.89, trial=2)],
+    }
+    board = build_leaderboard(config, results, [Spec("a"), Spec("b")], PriceBook())
+    note = next(n for n in board.notes if "within noise" in n)
+
+    assert "Raise run.trials" in note

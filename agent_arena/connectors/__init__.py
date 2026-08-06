@@ -1,6 +1,7 @@
 """Model providers behind one interface, plus the pricing/capability catalog."""
 
 from .base import Connector, GenerationRequest, GenerationResult, estimate_tokens
+from .local import LocalConnector
 from .mock import MockConnector
 from .pricing import ModelCard, PriceBook, build_price_book
 from .providers import (
@@ -15,6 +16,7 @@ from .registry import (
     infer_provider,
     register_connector,
     requires_api_key,
+    resolve_provider,
 )
 
 __all__ = [
@@ -25,6 +27,7 @@ __all__ = [
     "GenerationRequest",
     "GenerationResult",
     "LiteLLMConnector",
+    "LocalConnector",
     "MockConnector",
     "ModelCard",
     "OpenAIConnector",
@@ -34,5 +37,6 @@ __all__ = [
     "estimate_tokens",
     "infer_provider",
     "register_connector",
+    "resolve_provider",
     "requires_api_key",
 ]

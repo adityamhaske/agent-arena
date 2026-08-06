@@ -20,6 +20,7 @@ from typing import Any, Sequence
 from .core.config import ProjectConfig, load_config
 from .core.errors import ArenaError
 from .core.report import Report, format_metric, text_table, write_reports
+from .connectors.registry import resolve_provider
 from .core.runner import ArenaRunner
 from .core.store import ResultStore
 from .core.testcase import load_test_cases
@@ -166,7 +167,7 @@ def _dry_run(runner: ArenaRunner) -> int:
     rows = []
     estimated_total = 0.0
     for spec in config.enabled_models:
-        card = runner.price_book.get(spec.model)
+        card = runner.price_book.get(spec.model, provider=resolve_provider(spec))
         calls = 0 if spec.key in skipped else len(runner.test_cases) * config.run.trials
         # A rough forecast: charge the configured max_tokens as output, and a
         # nominal 500-token prompt. Deliberately pessimistic on output.
@@ -352,15 +353,15 @@ def cmd_models(args: argparse.Namespace) -> int:
     if args.project:
         config = ProjectConfig.load(args.project)
         book = build_price_book(config)
-        wanted = [spec.model for spec in config.models]
+        wanted = [(spec.model, resolve_provider(spec)) for spec in config.models]
     else:
         book = PriceBook()
-        wanted = book.known_models()
+        wanted = [(model, None) for model in book.known_models()]
 
     rows = []
     unpriced = []
-    for model in wanted:
-        card = book.get(model)
+    for model, provider in wanted:
+        card = book.get(model, provider=provider)
         if not card.has_pricing:
             unpriced.append(model)
         rows.append(
@@ -448,7 +449,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
     print(f"✓ models      {len(config.enabled_models)} enabled")
 
     for spec in config.enabled_models:
-        card = runner.price_book.get(spec.model)
+        card = runner.price_book.get(spec.model, provider=resolve_provider(spec))
         status = skipped.get(spec.key)
         marker = "!" if status else "✓"
         detail = status or ("priced" if card.has_pricing else "no pricing")
@@ -456,7 +457,8 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
     if skipped:
         print(
-            "\nThese models would be skipped for missing credentials. "
+            f"\n{len(skipped)} model(s) would be skipped for the reasons above "
+            "(missing credentials, or an endpoint that is not reachable). "
             "Everything else is ready to run."
         )
     else:

@@ -73,21 +73,6 @@ def load_structured(path: str | Path) -> Any:
     )
 
 
-def dump_structured(data: Any, path: str | Path) -> Path:
-    """Write ``data`` as JSON or YAML, chosen by the target file's suffix."""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    suffix = path.suffix.lower()
-
-    if suffix in (".yaml", ".yml") and yaml_available():
-        import yaml  # noqa: PLC0415
-
-        path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
-    else:
-        path.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
-    return path
-
-
 def load_python_object(spec: str, base_dir: str | Path | None = None) -> Any:
     """Import an object from ``"module_or_path.py:attribute"`` or ``"pkg.mod:attr"``.
 

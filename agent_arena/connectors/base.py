@@ -103,6 +103,16 @@ class Connector(ABC):
     def close(self) -> None:
         """Release any client resources. Overridden where it matters."""
 
+    def healthcheck(self) -> str | None:
+        """Return a reason this model is unreachable, or ``None`` if it is fine.
+
+        Checked before a run so an unreachable endpoint is *skipped with an
+        explanation* rather than producing one failed call per test case.
+        Only implemented where the check is instant and meaningful — a local
+        server either accepts a socket or does not.
+        """
+        return None
+
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
         return f"<{type(self).__name__} model={self.model!r}>"
 

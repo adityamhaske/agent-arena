@@ -9,11 +9,13 @@ philosophy — structured evidence over vibes — and answer opposite questions.
 | **Universal arena** | Which model should *my* project use, on *my* criteria? | The model | The task | `agent_arena/`, `projects/` — **[docs/UNIVERSAL_ARENA.md](docs/UNIVERSAL_ARENA.md)** |
 
 If you came here to choose a model for your own project, start with the
-[Universal Arena guide](docs/UNIVERSAL_ARENA.md):
+**[end-to-end demo](demo.md)** — a full walkthrough using models running on
+your own machine — or the [Universal Arena guide](docs/UNIVERSAL_ARENA.md):
 
 ```bash
 pip install -e .
 arena evaluate --project projects/support_triage   # runs offline, no API key needed
+arena evaluate --project projects/local_demo       # your local models (Ollama etc.)
 arena init projects/my_project                     # then point it at your own work
 ```
 
@@ -101,6 +103,7 @@ python run_all.py --providers gemini --trials 3 --sw-task02-trials 7
 ```
 
 ## Documentation
+- **[Demo](demo.md)** — end-to-end walkthrough with local models, system design diagrams, real output
 - **[Universal Arena](docs/UNIVERSAL_ARENA.md)** — the config-driven model-selection harness (`agent_arena/`), plus a [sample report](docs/EXAMPLE_REPORT.md)
 - **[Project Spec](docs/PROJECT_SPEC.md)**
 - **[Architecture](docs/ARCHITECTURE.md)**

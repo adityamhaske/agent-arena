@@ -178,17 +178,24 @@ class PriceBook:
 
     # ---- lookup -------------------------------------------------------
 
-    def get(self, model_id: str) -> ModelCard:
-        if model_id in self._cache:
-            return self._cache[model_id]
+    def get(self, model_id: str, provider: str | None = None) -> ModelCard:
+        """Look up a card. ``provider`` supplies a fallback for model families
+        we cannot enumerate — every locally-hosted model shares the same
+        cost and privacy facts, whatever it is called."""
+        cache_key = f"{provider}:{model_id}" if provider else model_id
+        if cache_key in self._cache:
+            return self._cache[cache_key]
 
         entry, matched = self._resolve(model_id)
+        if entry is None and provider:
+            entry, matched = self._resolve(provider)
+
         card = _build_card(model_id, entry, default_as_of=self.as_of)
         card.known = entry is not None
         inherited = [name for name in matched if name != model_id]
         if inherited:
             card.notes = (card.notes + f" (inherits from '{inherited[0]}')").strip()
-        self._cache[model_id] = card
+        self._cache[cache_key] = card
         return card
 
     def _resolve(self, model_id: str) -> tuple[dict[str, Any] | None, list[str]]:
@@ -242,9 +249,6 @@ class PriceBook:
 
     def known_models(self) -> list[str]:
         return sorted(set(self._entries) | set(self._overrides))
-
-    def describe(self) -> list[dict[str, Any]]:
-        return [self.get(model_id).to_dict() for model_id in self.known_models()]
 
 
 def _build_card(model_id: str, entry: dict[str, Any] | None, default_as_of: str) -> ModelCard:

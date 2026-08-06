@@ -35,7 +35,8 @@
   - [x] Aggregate metrics over multiple trials (28 runs total, 0 incompletes)
   - [x] Markdown reporting generator (`report_generator.py`)
   - [x] Full sweep report at `results/sweep_20260627/report.md`
-  - [x] Traces organized in `results/exploratory/` and `results/sweep_20260627/`
+  - [x] Traces organized under `results/sweep_20260627/` (superseded exploratory
+        traces were removed in the 2026-08 cleanup; recoverable from git history)
 
 ---
 

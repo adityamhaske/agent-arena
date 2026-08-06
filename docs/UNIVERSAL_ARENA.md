@@ -178,7 +178,9 @@ models:
 
 Provider resolution: an explicit `provider:` wins; otherwise the model id's
 prefix decides (`claude-*` → anthropic, `gpt-*`/`o3-*` → openai, `gemini-*` →
-gemini, `mock:*` → the offline mock); a `vendor/model` id goes to LiteLLM.
+gemini, `mock:*` → the offline mock, `llama*`/`qwen*`/`mistral*`/`ollama/*` →
+local); a bare `api_base:` also means local; any other `vendor/model` id goes
+to LiteLLM.
 
 Provider SDKs are imported lazily, so the arena installs and its whole test
 suite runs with none of them present:
@@ -186,6 +188,32 @@ suite runs with none of them present:
 ```bash
 pip install 'agent-arena[anthropic]'    # or [openai], [gemini], [litellm], [all]
 ```
+
+### Local models
+
+Models on your own machine need **no SDK at all** — the local connector is
+stdlib `urllib` speaking the OpenAI-compatible `POST /v1/chat/completions` that
+Ollama, LM Studio, llama.cpp and vLLM all expose:
+
+```yaml
+models:
+  - llama3.2                                        # Ollama on :11434, inferred
+  - {key: qwen, model: ollama/qwen2.5-coder:7b}
+  - {key: studio, model: my-finetune, api_base: http://localhost:1234/v1}
+```
+
+They are priced at `$0.00` per call — true, for marginal API cost — and satisfy
+`on_prem`, `training_opt_out` and `zero_data_retention` privacy gates outright,
+which is usually the whole reason to consider them. A server that is not
+running, or a model that has not been pulled, is **skipped with a reason**
+before the run starts rather than failing every test case:
+
+```
+! llama32   llama3.2   model 'llama3.2' is not served by http://localhost:11434/v1
+                       (available: qwen2.5:7b) — try `ollama pull llama3.2`
+```
+
+See [`demo.md`](../demo.md) for a full local-model walkthrough.
 
 A model whose API key is missing is **skipped with a note**, not failed — the
 rest of the run still produces an answer.

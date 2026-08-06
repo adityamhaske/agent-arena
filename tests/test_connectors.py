@@ -38,7 +38,13 @@ def request(prompt: str = "hello", **metadata) -> GenerationRequest:
         ("gemini-2.5-flash", "gemini"),
         ("mock:oracle", "mock"),
         ("bedrock/anthropic.claude-opus-5", "litellm"),
-        ("ollama/llama3.3", "litellm"),
+        # Local runtimes route to the stdlib HTTP connector, not LiteLLM, so
+        # evaluating a model on your own machine needs no SDK installed.
+        ("ollama/llama3.3", "local"),
+        ("local/my-finetune", "local"),
+        ("llama3.2", "local"),
+        ("qwen2.5-coder:7b", "local"),
+        ("mistral-nemo", "local"),
     ],
 )
 def test_provider_is_inferred_from_the_model_id(model: str, provider: str) -> None:
@@ -55,8 +61,10 @@ def test_explicit_provider_wins_over_inference() -> None:
     assert build_connector(spec).provider == "mock"
 
 
-def test_mock_models_need_no_credentials() -> None:
+def test_local_and_mock_models_need_no_credentials() -> None:
     assert requires_api_key(ModelSpec(key="k", model="mock:oracle")) is None
+    assert requires_api_key(ModelSpec(key="k", model="llama3.2")) is None
+    assert requires_api_key(ModelSpec(key="k", model="ollama/qwen2.5")) is None
     assert requires_api_key(ModelSpec(key="k", model="claude-opus-5")) == "ANTHROPIC_API_KEY"
 
 

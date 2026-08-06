@@ -220,6 +220,24 @@
       ],
       "notes": "Extended thinking uses budget_tokens; no effort parameter."
     },
+    "local": {
+      "provider": "local",
+      "display_name": "Locally hosted model",
+      "input_usd_per_mtok": 0.0,
+      "output_usd_per_mtok": 0.0,
+      "features": [
+        "function_calling",
+        "structured_outputs",
+        "streaming"
+      ],
+      "privacy": {
+        "on_prem": true,
+        "training_opt_out": true,
+        "zero_data_retention": true,
+        "dpa": true
+      },
+      "notes": "Fallback card for any model served from your own machine. Marginal API cost is zero and no data leaves the host, which is why local models win privacy gates outright. Context window and feature support vary by model — override with a `card:` block if you constrain on them."
+    },
     "mock": {
       "provider": "mock",
       "display_name": "Offline mock",
