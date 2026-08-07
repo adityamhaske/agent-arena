@@ -447,17 +447,19 @@ runs, tests, and CI are reproducible.
 
 ---
 
-## Relationship to the multi-agent harness
+## Relationship to the multi-agent handoff study
 
 This repo also contains the original Agent Arena: a study of how *multi-agent
-architectures* lose information at coordination boundaries (`core/`, `evals/`,
-`run_all.py` — see the [README](../README.md)). The two are independent and
-answer different questions:
+architectures* lose information at coordination boundaries, now at
+[`studies/multi_agent_handoff/`](../studies/multi_agent_handoff/). The two are
+independent and answer different questions:
 
 | | Question | Varies | Holds fixed |
 |---|---|---|---|
-| Multi-agent harness | Does decomposing a task across agents introduce failures? | The architecture | The model |
+| Multi-agent study | Does decomposing a task across agents introduce failures? | The architecture | The model |
 | Universal arena | Which model should this project use? | The model | The task |
 
 They share a philosophy — structured evidence over vibes — but no code. The
-universal arena is additive; nothing in the original harness changed.
+universal arena is additive; nothing in the original harness changed. The study
+is complete and frozen, and is not part of the installable package — it keeps
+its own dependencies and its own [README](../studies/multi_agent_handoff/README.md).

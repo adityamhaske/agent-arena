@@ -1,111 +1,318 @@
 # Agent Arena
 
-This repository holds two independent evaluation systems that share a
-philosophy — structured evidence over vibes — and answer opposite questions.
+Two independent evaluation systems that share a philosophy — **structured
+evidence over vibes** — and answer opposite questions about LLM systems.
 
 | | Question it answers | What varies | What is held fixed | Where |
 |---|---|---|---|---|
-| **Multi-agent harness** | Does splitting a task across agents lose information at the handoff? | The architecture | The model, the task | `core/`, `evals/`, `run_all.py` — this README |
-| **Universal arena** | Which model should *my* project use, on *my* criteria? | The model | The task | `agent_arena/`, `projects/` — **[docs/UNIVERSAL_ARENA.md](docs/UNIVERSAL_ARENA.md)** |
+| **Universal arena** | Which model should *my* project use, on *my* criteria? | The model | The task, the architecture | `agent_arena/`, `projects/` — [docs/UNIVERSAL_ARENA.md](docs/UNIVERSAL_ARENA.md) |
+| **Multi-agent study** | Does splitting a task across agents lose information at the handoff? | The architecture | The model, the task | `studies/multi_agent_handoff/` — [its README](studies/multi_agent_handoff/README.md) |
 
-If you came here to choose a model for your own project, start with the
-**[end-to-end demo](demo.md)** — a full walkthrough using models running on
-your own machine — or the [Universal Arena guide](docs/UNIVERSAL_ARENA.md):
+They share no code. Zero imports cross between them.
 
-```bash
-pip install -e .
-arena evaluate --project projects/support_triage   # runs offline, no API key needed
-arena evaluate --project projects/local_demo       # your local models (Ollama etc.)
-arena init projects/my_project                     # then point it at your own work
+## Why two projects, and why they belong together
+
+Any claim about an LLM system is a claim about one of two variables, and most
+evaluations quietly confound them. When a multi-agent pipeline fails, was it the
+*model* being dumb, or the *architecture* dropping data on the floor? You cannot
+answer that by varying both at once.
+
+So each project pins one variable and moves the other:
+
+```
+                 varies the MODEL
+                        ▲
+                        │
+          Universal arena│  "we picked Haiku and quality dropped"
+       (task held fixed) │   → a model question
+                        │
+    ────────────────────┼────────────────────►  varies the ARCHITECTURE
+                        │
+                        │  Multi-agent study   "we split it into agents
+                        │  (model held fixed)   and it broke"
+                        │                       → an architecture question
 ```
 
-The rest of this README describes the original multi-agent study.
+That is the whole relationship. The study proves the architecture axis is real —
+that a *coordination* failure exists and is separable from a capability failure.
+The arena is the tool for the model axis, built afterward and informed by it.
+
+The study is also why the arena's design is what it is: **the study's finding is
+that you cannot diagnose a system whose failures you cannot categorize.** Both
+codebases therefore refuse to reduce a run to a single pass/fail number — the
+study emits a normalized trace you can replay, the arena emits a scored,
+weighted, per-criterion leaderboard plus a queryable database.
 
 ---
 
-## What is this project?
-Imagine assigning a complex task to a single highly capable person, versus splitting that same task across a team of specialists. Does dividing the work introduce new kinds of errors? This project explores that question for AI. We built a testing ground to see what happens when multiple AI "agents" try to collaborate to solve customer support tickets, compared to having just one agent do everything itself.
+# 1. Universal Arena
 
-## Why does this matter?
-AI systems are increasingly moving away from single chatbots toward teams of specialized agents working together—from customer service bots handing off to billing bots, to complex coding assistants. If splitting work between agents can silently lose critical information during the handoff, that's a massive hidden risk for anyone deploying these systems in the real world.
+**The question:** you have a task and a budget. Which model should you actually
+ship, and what does that choice cost you?
 
-## Who is this for?
-- AI engineers building multi-agent systems
-- Engineering leaders deciding whether to adopt multi-agent architectures
-- Researchers studying AI reliability and failure modes
+## Why it's unique
 
-## What did this project find?
-When one AI agent handed off a task to another, an important detail sometimes got lost along the way—not because the AI was confused, but because of how the handoff itself was designed. This happened every single time in one setup, and about 3 times in 10 in another. The result was an AI confidently executing the wrong action because it never received the crucial piece of information from its teammate.
+Most model comparisons are public benchmarks — MMLU, LMArena, a vendor's own
+chart. Those tell you how a model does on *someone else's* task, aggregated over
+criteria you didn't choose. That is nearly useless for a shipping decision,
+because your accuracy floor, latency budget, and price ceiling are yours.
 
-## What can someone gain from this?
-Engineers get a working testing harness to check their own multi-agent systems for this exact type of failure. Meanwhile, anyone evaluating AI vendor claims gets a concrete reason to ask a critical question: "How does your system guarantee that vital information isn't dropped when passing between your agents?"
+The arena inverts that. It knows nothing about any task:
 
-## How do I explore this project?
-If you're not planning to run the code, you can read the technical **Key finding** section just below this one, and then jump straight to the full writeup in [results/sweep_20260627/report.md](results/sweep_20260627/report.md).
+- **A project is a folder, not code.** `config.yaml` + `tests.yaml`. To evaluate
+  something completely different, copy the template and change the files. There
+  is no second code path and no plugin to write.
+- **You define what "best" means.** Weights across accuracy/cost/latency, a
+  budget per 1k calls, a latency target, and **hard constraints** — a model under
+  your accuracy floor is not ranked low, it's `DISQUALIFIED` with the reason
+  printed. A leaderboard that ranks an unusable model 4th is lying to you.
+- **It is honest about resolution.** When the top two are within 0.02, the report
+  says so and suggests more trials, rather than implying a 12-case sweep can
+  separate them.
+- **It runs offline.** Deterministic `mock:` models with fixed accuracy/latency/
+  price let you prove your scorers and weights behave *before* spending anything.
+  Both example projects run with no API key.
+- **Local models are first-class.** Anything with an OpenAI-compatible endpoint
+  (Ollama, vLLM, LM Studio) sits in the same run as a frontier API model.
+- **The engine is stdlib-only.** PyYAML is the single dependency and even that is
+  optional — JSON config works without it. Every provider SDK imports lazily, so
+  you install only what you call.
 
-## Key finding
+## Where
 
-Multi-agent decomposition can silently drop information at coordination boundaries, independent of model capability. On an information asymmetry trap task, `peer_to_peer` failed 100% of the time (0/5 trials) due to a rigid handoff schema; `supervisor_worker` failed probabilistically (29%) depending on whether an intermediate agent's natural-language summary happened to mention the relevant field.
-
-→ Full report: [results/sweep_20260627/report.md](results/sweep_20260627/report.md)
-
-## What this is
-
-Agent Arena is an evaluation harness designed to rigorously compare different multi-agent architectures on the same tasks. Unlike standard demos, it uses a shared structured trace format to produce data-driven failure analysis. By enforcing strict, normalized tracing across all architectures, we can accurately diagnose where an agent loop breaks down—be it a logical failure, a rate-limit timeout, or a tool hallucination.
-
-## Architectures compared
-
-| Architecture | Description |
+| Path | What it holds |
 |---|---|
-| `single_agent` | A standard ReAct loop with direct tool access. Acts as the baseline control. |
-| `peer_to_peer` | Two independent agents coordinating via a rigid JSON handoff message. |
-| `supervisor_worker` | A hierarchical pattern where a supervisor delegates sub-tasks to specialized workers, receiving natural-language summaries in return. |
-| `debate_critic` | A proposer-critic model where a critic reviews the proposer's initial trajectory and forces revision if necessary. |
+| `agent_arena/` | The engine — config, runner, metrics, store, report |
+| `agent_arena/connectors/` | Providers: Anthropic, OpenAI, Gemini, LiteLLM, local, mock |
+| `agent_arena/scorers/` | The 10 built-in eval types |
+| `agent_arena/templates/` | What `arena init` copies |
+| `projects/support_triage/` | Example 1 — high-volume classification, offline |
+| `projects/doc_extraction/` | Example 2 — structured JSON extraction, offline |
+| `projects/local_demo/` | Example 3 — models on your own machine |
+| `tests/` | 217 tests covering the engine |
 
-## Results summary
-
-| Architecture | task_01 (easy) | task_02 (trap) | Notes |
-|---|---|---|---|
-| `single_agent` | 100% (3/3) | 100% (3/3) | Clean baseline |
-| `debate_critic` | 100% (3/3) | 100% (3/3) | Most robust, highest LLM call cost |
-| `peer_to_peer` | 100% (3/3) | 0% (0/5) | Deterministic coordination failure (schema drop) |
-| `supervisor_worker`| 67% (2/3) | 71% (5/7) | Probabilistic coordination failure (summary compression) |
-
-*(All runs use Gemini 2.5 Flash to isolate architectural variance from model variance)*
-
-## Setup
-
-1. Install dependencies:
-   ```bash
-   pip install anthropic google-generativeai tenacity
-   ```
-2. Export your API keys:
-   ```bash
-   export ANTHROPIC_API_KEY="your-anthropic-key"
-   export GEMINI_API_KEY="your-gemini-key"
-   ```
-
-## Usage
-
-To run the baseline single-agent architecture against the Customer Escalation eval task:
+## How to use it
 
 ```bash
-# Run with Gemini 2.5 Flash (Default)
-python run_baseline.py --provider gemini
-
-# Run with Anthropic Claude
-python run_baseline.py --provider anthropic
+pip install -e .          # engine only; add [anthropic], [openai], [gemini], [all]
 ```
 
-To run the full 28-run evaluation sweep:
+Run an example to see a real leaderboard immediately — no API key needed:
+
 ```bash
-python run_all.py --providers gemini --trials 3 --sw-task02-trials 7
+arena evaluate --project projects/support_triage
+```
+
+```
+  #  model         id             composite  accuracy  cost   latency  status
+  1  sim_small     mock:small     0.853      83.3%     $0.06  190ms    ranked
+  2  sim_frontier  mock:frontier  0.750      97.6%     $0.30  1,500ms  ranked
+  3  sim_balanced  mock:balanced  0.744      85.7%     $0.18  620ms    ranked
+  -  sim_tiny      mock:tiny      —          50.0%     $0.02  90ms     DISQUALIFIED
+
+  Winner: sim_small  (accuracy 83.3%, cost $0.06, latency 190ms)
+  ✗ sim_tiny: accuracy 50.0% below the required 70.0%
+```
+
+Note the winner is not the most accurate model. At this volume, with these
+weights, the small one wins — and that is the entire point of the tool.
+
+### Your own project
+
+```bash
+arena init projects/my_project     # scaffold config.yaml + tests.yaml + scorers/
+# edit the two files
+arena validate --project projects/my_project              # config, tests, credentials
+arena evaluate --project projects/my_project --dry-run    # plan + cost estimate
+arena evaluate --project projects/my_project
+```
+
+**`config.yaml`** is the whole contract:
+
+```yaml
+models:                          # what to compare
+  - key: sim_small
+    model: mock:small
+    card: {input_usd_per_mtok: 1, output_usd_per_mtok: 5}
+  - key: opus_5
+    model: claude-opus-5         # skipped, not failed, if the key is missing
+
+defaults: {system: "...", max_tokens: 8, temperature: 0}
+run:      {trials: 3, concurrency: 8, timeout_s: 30}
+
+metrics:                         # what "best" means to you
+  weights: {accuracy: 0.55, cost: 0.25, latency: 0.20}
+  cost:    {budget_usd_per_1k_calls: 2.0}
+  latency: {target_ms: 800}
+
+constraints:                     # non-negotiables → DISQUALIFIED
+  min_accuracy: 0.70
+  max_latency_p95_ms: 4000
+
+scorers:
+  default: classification
+  options: {classification: {labels: [billing, technical, ...]}}
+```
+
+**`tests.yaml`** is your cases:
+
+```yaml
+tests:
+  - id: double_charge
+    input: "I was charged twice for the same order this month."
+    reference: billing
+    tags: [billing, easy]
+```
+
+### Scoring
+
+Ten built-in eval types, no scorer code required: `classification`,
+`exact_match`, `contains`, `regex`, `numeric`, `json_match`, `semantic`,
+`code_exec`, `llm_judge`, `manual`. Run `arena scorers` to see them. Drop a
+Python file in `scorers/` for grading only you can write, and `hooks.py` to touch
+outputs before grading.
+
+### The rest of the CLI
+
+```bash
+arena models   --project <p>   # model cards: price, context window, features
+arena tests    --project <p>   # what cases will run
+arena report   --project <p> --run-id <id>   # re-show a stored run
+arena history  --project <p>   # past runs, and regressions between them
+```
+
+Every run lands in a SQLite database (`results/arena.sqlite`) alongside the
+Markdown and JSON reports, so you can query across runs rather than re-running.
+
+**Full reference:** [docs/UNIVERSAL_ARENA.md](docs/UNIVERSAL_ARENA.md) ·
+**Walkthrough with local models:** [demo.md](demo.md) ·
+**Sample output:** [docs/EXAMPLE_REPORT.md](docs/EXAMPLE_REPORT.md)
+
+---
+
+# 2. Multi-Agent Handoff Study
+
+**The question:** you split a task across specialized agents. Does the split
+itself introduce failures that no single agent would have had?
+
+> **Status: complete and frozen.** Finished 2026-06-27, kept for
+> reproducibility. Not part of the installable package; it has its own
+> dependencies.
+
+## The finding
+
+**Multi-agent decomposition silently drops information at coordination
+boundaries, independent of model capability.** On a task where one agent holds a
+flag another agent needs:
+
+| Architecture | task_01 (easy) | task_02 (trap) | What happened |
+|---|---|---|---|
+| `single_agent` | 100% (3/3) | 100% (3/3) | Clean baseline |
+| `debate_critic` | 100% (3/3) | 100% (3/3) | Most robust, highest call cost |
+| `peer_to_peer` | 100% (3/3) | **0% (0/5)** | Rigid handoff schema dropped the field every time |
+| `supervisor_worker` | 67% (2/3) | **71% (5/7)** | Worker's summary mentioned the field — or didn't |
+
+Same model throughout (Gemini 2.5 Flash). The only variable was the
+architecture. `peer_to_peer` didn't fail because the model was confused; it
+failed because the handoff format had no slot for `credit_hold`. The agent then
+confidently did the wrong thing, having never seen the data.
+
+→ **[Full report](studies/multi_agent_handoff/results/sweep_20260627/report.md)**
+
+## Why it's unique
+
+The hard part isn't running multi-agent systems — it's *attributing* their
+failures. A pipeline returns a wrong answer; nothing in the output tells you
+whether the agent reasoned badly or never received the input. Most harnesses
+stop at pass/fail and leave you guessing.
+
+This study is built to make that distinction mechanically:
+
+- **A normalized trace across every architecture.** All four emit the same
+  append-only JSONL schema — `llm_call`, `tool_call`, `peer_handoff`,
+  `worker_finish`, `critic_review`, `revision_start` — forming a replayable
+  execution DAG. The trace is the evidence, and it's committed to this repo.
+- **A failure taxonomy, not a boolean.** Every run grades to exactly one of
+  `task_failure` (had the data, chose wrong), `coordination_failure` (the
+  architecture prevented it from seeing the data), `tool_error_unrecovered`, or
+  `incomplete`.
+- **Graded against real state, not an LLM judge.** Success is checked against the
+  mock SQLite database plus semantic scanning of trace events.
+- **A deliberately fair baseline.** The single-agent control gets *unrestricted*
+  tool access, so multi-agent failures can't be dismissed as a rigged comparison.
+- **The trap task is the instrument.** `task_02` gives one agent a flag the
+  deciding agent needs. An architecture with a lossy boundary cannot pass it, and
+  the grader can prove the field was missing at the moment of decision.
+
+## Where
+
+| Path | What it holds |
+|---|---|
+| `studies/multi_agent_handoff/core/` | Providers, agent loop, mock tools, trace logger, the 4 architectures |
+| `studies/multi_agent_handoff/evals/` | Grader and the 2 eval task definitions |
+| `studies/multi_agent_handoff/run_baseline.py` | One architecture, one task |
+| `studies/multi_agent_handoff/run_all.py` | Multi-trial sweep |
+| `studies/multi_agent_handoff/report_generator.py` | Sweep manifest → markdown report |
+| `studies/multi_agent_handoff/results/sweep_20260627/` | The committed 28-run sweep: traces, summary, report |
+
+**The four architectures:**
+
+| Architecture | Coordination mechanism |
+|---|---|
+| `single_agent` | None — one ReAct loop, unrestricted tools. The control. |
+| `peer_to_peer` | Two agents, partitioned tools, a **rigid fixed-format handoff string** |
+| `supervisor_worker` | Supervisor delegates; workers return **free-form natural-language summaries** |
+| `debate_critic` | Proposer drafts, critic cross-checks claimed vs actual tool results, forces revision |
+
+## How to use it
+
+Not installed by the root `pip install -e .` — that installs the arena only.
+
+```bash
+cd studies/multi_agent_handoff
+pip install anthropic google-generativeai tenacity
+export GEMINI_API_KEY="..."      # and/or ANTHROPIC_API_KEY
+```
+
+Run commands **from that directory** — the scripts resolve `core/` and `evals/`
+relative to themselves, and write to `results/` relative to your working dir.
+
+```bash
+python run_baseline.py --provider gemini                    # one run
+python run_baseline.py --architecture peer_to_peer --task task_02   # the trap
+python run_all.py --providers gemini --trials 3 --sw-task02-trials 7  # full sweep
+python report_generator.py results/sweep_<timestamp>.json   # regenerate report
+```
+
+To test your own system for this failure mode, the reusable pieces are the trace
+schema and the grader taxonomy — emit the same events from your pipeline and the
+grader will tell you whether a failure was coordination or capability.
+
+**Details:** [study README](studies/multi_agent_handoff/README.md) ·
+[Architecture](studies/multi_agent_handoff/docs/ARCHITECTURE.md) ·
+[Tasks and evals](studies/multi_agent_handoff/docs/TASKS_AND_EVALS.md) ·
+[Trace schema](studies/multi_agent_handoff/docs/TRACE_SCHEMA.md)
+
+---
+
+## Repo layout
+
+```
+agent_arena/                    the installable engine  ─┐
+projects/                       example + your projects  ├─ Universal Arena
+tests/                          217 engine tests         │
+demo/  demo.md                  local-model walkthrough ─┘
+
+studies/multi_agent_handoff/    the frozen study (code, docs, committed sweep)
+
+docs/                           UNIVERSAL_ARENA.md, EXAMPLE_REPORT.md, DECISIONS.md
+docs/adr/                       ADRs 0001–0011, one sequence spanning both systems
 ```
 
 ## Documentation
-- **[Demo](demo.md)** — end-to-end walkthrough with local models, system design diagrams, real output
-- **[Universal Arena](docs/UNIVERSAL_ARENA.md)** — the config-driven model-selection harness (`agent_arena/`), plus a [sample report](docs/EXAMPLE_REPORT.md)
-- **[Project Spec](docs/PROJECT_SPEC.md)**
-- **[Architecture](docs/ARCHITECTURE.md)**
-- **[Trace Schema](docs/TRACE_SCHEMA.md)**
-- **Architecture Decision Records (ADRs):** See `docs/adr/` for the rationale behind trace formats, retry strategies, tool failure injections, and the model-agnostic provider abstraction.
+
+- **[Universal Arena guide](docs/UNIVERSAL_ARENA.md)** — full reference for the arena
+- **[Demo](demo.md)** — end-to-end walkthrough with local models and real output
+- **[Sample report](docs/EXAMPLE_REPORT.md)** — what the arena produces
+- **[Multi-agent study](studies/multi_agent_handoff/README.md)** — the frozen study
+- **[Decisions (ADRs)](docs/DECISIONS.md)** — why trace formats, retry strategy, failure injection, and the config-driven design are what they are. The **System** column says which project each decision governs.
