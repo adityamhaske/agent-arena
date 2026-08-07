@@ -21,7 +21,12 @@ venv.bak/
 #   - eval_db.sqlite is a fixture database run_baseline.py recreates per run
 projects/*/results/
 eval_db.sqlite
+
+# The study's sweep output. Its scripts write to `results/` relative to the
+# working directory, so ignore the fixture DB under both the study root (the
+# documented place to run from) and the repo root.
 results/eval_db.sqlite
+studies/multi_agent_handoff/results/eval_db.sqlite
 
 # pytest
 .pytest_cache/
