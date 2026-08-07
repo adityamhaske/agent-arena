@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: tests (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      # No provider SDK is installed here on purpose. The arena's core has no
+      # hard third-party dependency and every provider imports lazily, so the
+      # whole suite must pass with nothing but PyYAML and pytest present. If
+      # this job ever needs `anthropic` installed to go green, that invariant
+      # has been broken.
+      - name: Test
+        run: pytest -q
+
+  examples:
+    name: example projects stay runnable
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install
+        run: pip install -e .
+
+      # The shipped projects are the documentation. If they stop validating or
+      # running, the docs are lying — so this is a real check, not a smoke test.
+      - name: Validate
+        run: |
+          arena validate --project projects/support_triage
+          arena validate --project projects/doc_extraction
+
+      - name: Run the offline sweeps
+        run: |
+          arena evaluate --project projects/support_triage --quiet --no-report
+          arena evaluate --project projects/doc_extraction --quiet --no-report
+
+      - name: A scaffolded project must run immediately
+        run: |
+          arena init /tmp/scaffold --name scaffold_check
+          arena evaluate --project /tmp/scaffold --quiet --no-report
+
+      - name: End-to-end over HTTP against a local model server
+        run: |
+          python demo/fake_local_server.py --port 11434 &
+          for _ in $(seq 1 20); do
+            curl -sf http://localhost:11434/v1/models >/dev/null && break
+            sleep 0.5
+          done
+          arena validate --project projects/local_demo
+          arena evaluate --project projects/local_demo --trials 1 --quiet --no-report

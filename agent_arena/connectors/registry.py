@@ -124,6 +124,16 @@ def build_connector(spec: Any, defaults: dict[str, Any] | None = None) -> Connec
         ) from exc
 
 
+#: Several spellings route to the same connector. Canonicalising here keeps
+#: the model-card lookup, the cost calculation and the report in agreement —
+#: `provider: ollama` must find the same `local` card as a bare `llama3.2`.
+_PROVIDER_ALIASES = {"ollama": "local", "lmstudio": "local", "google": "gemini"}
+
+
+def canonical_provider(provider: str | None) -> str | None:
+    return _PROVIDER_ALIASES.get(provider, provider) if provider else provider
+
+
 def resolve_provider(spec: Any, strict: bool = False) -> str | None:
     """The provider a model spec will use, without constructing a connector.
 
@@ -131,9 +141,9 @@ def resolve_provider(spec: Any, strict: bool = False) -> str | None:
     ``strict``), so reporting paths can describe a model they could not route.
     """
     if getattr(spec, "provider", None):
-        return spec.provider
+        return canonical_provider(spec.provider)
     try:
-        return infer_provider(spec.model)
+        return canonical_provider(infer_provider(spec.model))
     except ConnectorError:
         # An explicit endpoint is itself the answer: you gave us a URL, so this
         # is an OpenAI-compatible server and the model name can be anything.

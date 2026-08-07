@@ -196,12 +196,12 @@ class MetricSettings:
                         f"{', '.join(NORMALIZE_MODES)}, got {mode!r}"
                     )
                 normalize[name] = mode
-            target = (
-                block.get("target")
-                or block.get("budget")
-                or block.get("budget_usd_per_1k_calls")
-                or block.get("target_p95_ms")
-                or block.get("target_ms")
+            # Explicit None checks, not `or`: a budget of 0 is a real (if
+            # strict) ceiling and must not fall through to the next key.
+            target = _first_not_none(
+                block,
+                ("target", "budget", "budget_usd_per_1k_calls",
+                 "target_p95_ms", "target_ms"),
             )
             if target is not None:
                 try:
@@ -295,6 +295,13 @@ class Constraints:
             or self.min_context_tokens
             or not self.allow_unknown_card
         )
+
+
+def _first_not_none(block: dict[str, Any], keys: tuple[str, ...]) -> Any:
+    for key in keys:
+        if block.get(key) is not None:
+            return block[key]
+    return None
 
 
 def _opt_float(value: Any, where: str) -> float | None:

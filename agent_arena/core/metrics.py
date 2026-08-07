@@ -577,7 +577,11 @@ def _leaderboard_notes(
         )
 
     ranked = board.ranked
-    if len(ranked) >= 2 and ranked[0].composite and ranked[1].composite:
+    if (
+        len(ranked) >= 2
+        and ranked[0].composite is not None
+        and ranked[1].composite is not None
+    ):
         margin = ranked[0].composite - ranked[1].composite
         if margin < 0.02:
             # Telling someone to run more trials is useless advice when the

@@ -170,10 +170,15 @@ class PriceBook:
             self._cache.pop(model_id, None)
 
     def _merge_entry(self, model_id: str, entry: dict[str, Any]) -> None:
-        existing = dict(self._entries.get(model_id) or {})
+        """Layer one override on top of any earlier override for the same model.
+
+        The shipped catalog is *not* mixed in here — :meth:`_resolve` already
+        layers it underneath at lookup time. Folding it in again would let the
+        catalog overwrite a price the project had already overridden, so a
+        second override silently reverted the first.
+        """
         merged = dict(self._overrides.get(model_id) or {})
-        merged.update(existing)
-        merged.update(entry)
+        merged.update(_canonical_keys(entry))
         self._overrides[model_id] = merged
 
     # ---- lookup -------------------------------------------------------
@@ -284,6 +289,22 @@ def _build_card(model_id: str, entry: dict[str, Any] | None, default_as_of: str)
         notes=str(entry.get("notes", "")),
         as_of=str(entry.get("as_of", default_as_of)),
     )
+
+
+#: Short spellings accepted in project pricing files, mapped to the canonical
+#: key. Normalised on the way in, so a catalog entry's canonical key can never
+#: shadow an override that used the alias.
+_KEY_ALIASES = {
+    "input": "input_usd_per_mtok",
+    "output": "output_usd_per_mtok",
+    "context_window": "context_tokens",
+    "context": "context_tokens",
+    "max_output": "max_output_tokens",
+}
+
+
+def _canonical_keys(entry: dict[str, Any]) -> dict[str, Any]:
+    return {_KEY_ALIASES.get(str(key), str(key)): value for key, value in entry.items()}
 
 
 def _opt_float(value: Any) -> float | None:

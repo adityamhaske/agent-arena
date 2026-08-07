@@ -65,6 +65,11 @@ class LocalConnector(Connector):
         try:
             with urllib.request.urlopen(models_url, timeout=5.0) as response:  # noqa: S310
                 catalog = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError:
+            # Something is listening but has no /v1/models route (llama.cpp
+            # and some vLLM builds). Not fatal — the completion call is the
+            # real test. Must precede URLError, which HTTPError subclasses.
+            return None
         except urllib.error.URLError as exc:
             return (
                 f"cannot reach {self.api_base} ({exc.reason}) — "

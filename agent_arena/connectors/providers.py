@@ -159,7 +159,11 @@ class OpenAIConnector(Connector):
         payload: dict[str, Any] = {"model": self.model, "messages": messages}
         if request.max_tokens:
             payload[token_param] = request.max_tokens
-        if request.temperature is not None and extra.pop("send_temperature", True):
+        # Popped unconditionally: `and` short-circuits when temperature is
+        # None, which used to leave this control flag in the payload and
+        # send it to the provider as an unknown parameter.
+        send_temperature = extra.pop("send_temperature", True)
+        if request.temperature is not None and send_temperature:
             payload["temperature"] = request.temperature
         if self.timeout_s:
             payload.setdefault("timeout", self.timeout_s)

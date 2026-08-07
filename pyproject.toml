@@ -41,7 +41,13 @@ arena = "agent_arena.cli:main"
 include = ["agent_arena*"]
 
 [tool.setuptools.package-data]
-agent_arena = ["connectors/*.json"]
+# The project template must ride along in the wheel — `arena init` copies
+# it, and a pip-installed arena has no repo checkout to fall back on.
+agent_arena = [
+    "connectors/*.json",
+    "templates/*",
+    "templates/**/*",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -61,6 +61,11 @@ class ExactMatchScorer(Scorer):
 
         # A list reference means "any of these is correct".
         candidates = reference if isinstance(reference, (list, tuple)) else [reference]
+        if not candidates:
+            raise ScorerError(
+                "exact_match got an empty list of acceptable answers — a test case "
+                "with `reference: []` can never pass; remove it or give it a value"
+            )
         expected = [normalize_text(c, **norm) for c in candidates]
 
         matched = got in expected
@@ -405,7 +410,9 @@ class LLMJudgeScorer(Scorer):
             return 0.0, text[:200], False
         numbers = _NUMBER.findall(text)
         if numbers:
-            value = float(numbers[0])
+            # Same comma handling as NumericScorer — a judge that replies
+            # "1,000" must not blow up the run with a bare ValueError.
+            value = float(numbers[0].replace(",", ""))
             if value > 1:  # judge answered on a 0-10 or 0-100 scale
                 value = value / 10.0 if value <= 10 else value / 100.0
             value = max(0.0, min(1.0, value))

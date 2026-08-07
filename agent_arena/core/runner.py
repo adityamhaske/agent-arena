@@ -333,6 +333,13 @@ class ArenaRunner:
                             f"stopping: {spec.key} failed on {case.id} — {result.error} "
                             "(run.fail_fast is on)"
                         )
+        except BaseException:
+            # An abandoned run must not be left looking live. Close it out as
+            # aborted — with the results it did produce still attached — so the
+            # database never accumulates rows stuck at status='running', and
+            # the connection is released either way.
+            self._abort_run(run_id, len(results))
+            raise
         finally:
             for connector in connectors.values():
                 connector.close()
@@ -384,6 +391,25 @@ class ArenaRunner:
         )
         self._emit("run_complete", result=run_result)
         return run_result
+
+    def _abort_run(self, run_id: str, n_results: int) -> None:
+        """Mark a run aborted after a failure, best effort."""
+        try:
+            self.store.finish_run(
+                run_id,
+                self.config.project,
+                Leaderboard(),
+                status="aborted",
+                n_results=n_results,
+            )
+        except Exception:  # noqa: BLE001 — never mask the original failure
+            pass
+        finally:
+            if self._owns_store and self._store is not None:
+                try:
+                    self._store.close()
+                finally:
+                    self._store = None
 
     # ---- one call -----------------------------------------------------
 

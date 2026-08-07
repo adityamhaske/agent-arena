@@ -159,9 +159,15 @@ class Report:
         md.append("## Recommendation\n")
         if winner:
             label = f" — {winner.display}" if winner.display and winner.display != winner.key else ""
+            # A ranked model can still have no composite, when every weighted
+            # metric was unmeasurable. Crashing the report here would throw
+            # away a sweep the user has already paid for.
+            composite = (
+                f"**{winner.composite:.3f}**" if winner.composite is not None else "not scored"
+            )
             md.append(
                 f"**`{winner.key}`**{label} (`{winner.model}`) — composite "
-                f"**{winner.composite:.3f}**. {self._why(winner)}\n"
+                f"{composite}. {self._why(winner)}\n"
             )
             runner_up = board.ranked[1] if len(board.ranked) > 1 else None
             if runner_up:
@@ -306,7 +312,9 @@ class Report:
                     f"{name} ({format_metric(name, mine)} vs "
                     f"{format_metric(name, theirs)})"
                 )
-        margin = (winner.composite or 0) - (runner_up.composite or 0)
+        if winner.composite is None or runner_up.composite is None:
+            return f"`{runner_up.key}` is the closest alternative."
+        margin = winner.composite - runner_up.composite
         sentence = (
             f"It beats `{runner_up.key}` by {margin:.3f} on the composite"
         )
@@ -365,12 +373,19 @@ class Report:
         return markdown_table(["test", "eval", *models], rows)
 
     def _failure_section(self, limit: int = 8) -> str:
-        failures = [
-            r
-            for r in self.run.results
-            if r.status == "ok" and r.passed is False and r.trial == 1
-        ]
-        failures.sort(key=lambda r: (r.score if r.score is not None else 0.0))
+        # One row per (model, test) rather than per call, keeping the worst
+        # trial. Filtering to trial 1 hid every failure that only showed up on
+        # a later repeat — exactly the flaky cases most worth seeing.
+        worst: dict[tuple[str, str], Any] = {}
+        for r in self.run.results:
+            if r.status != "ok" or r.passed is not False:
+                continue
+            key = (r.model_key, r.test_id)
+            if key not in worst or (r.score or 0.0) < (worst[key].score or 0.0):
+                worst[key] = r
+        failures = sorted(
+            worst.values(), key=lambda r: (r.score if r.score is not None else 0.0)
+        )
         errors = [r for r in self.run.results if r.status != "ok"]
 
         if not failures and not errors:

@@ -278,6 +278,14 @@ class ResultStore:
             rows = self._conn.execute(query, params).fetchall()
         return [dict(row) for row in rows]
 
+    def run(self, run_id: str) -> dict[str, Any] | None:
+        """One run by id, regardless of how far back it is."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM runs WHERE run_id = ?", (run_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
     def rankings(self, run_id: str) -> list[dict[str, Any]]:
         with self._lock:
             rows = self._conn.execute(
@@ -335,7 +343,12 @@ class ResultStore:
         return history
 
     def flaky_tests(self, project: str, run_id: str | None = None) -> list[dict[str, Any]]:
-        """Tests whose outcome varies across trials — the ones worth looking at."""
+        """Tests whose score varies *between trials of the same run*.
+
+        Grouping is always scoped to a run. Comparing across runs would report
+        a config change — a different prompt, a different temperature — as
+        trial flakiness, which is a different problem with a different fix.
+        """
         clauses = ["project = ?", "status = 'ok'"]
         params: list[Any] = [project]
         if run_id:
@@ -343,11 +356,11 @@ class ResultStore:
             params.append(run_id)
         with self._lock:
             rows = self._conn.execute(
-                f"""SELECT test_id, model_key, COUNT(*) AS n,
+                f"""SELECT run_id, test_id, model_key, COUNT(*) AS n,
                            AVG(score) AS mean_score,
                            MIN(score) AS min_score, MAX(score) AS max_score
                     FROM results WHERE {' AND '.join(clauses)}
-                    GROUP BY test_id, model_key
+                    GROUP BY run_id, test_id, model_key
                     HAVING n > 1 AND max_score > min_score
                     ORDER BY (max_score - min_score) DESC""",
                 params,

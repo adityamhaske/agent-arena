@@ -25,7 +25,9 @@ from .core.runner import ArenaRunner
 from .core.store import ResultStore
 from .core.testcase import load_test_cases
 
-TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "projects" / "_template"
+# Inside the package, not beside it: `projects/` is not part of the wheel,
+# so a pip-installed `arena init` could never find a template out there.
+TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
 
 
 # ---------------------------------------------------------------------------
@@ -194,14 +196,19 @@ def _dry_run(runner: ArenaRunner) -> int:
 def cmd_report(args: argparse.Namespace) -> int:
     config = ProjectConfig.load(args.project)
     with ResultStore(config.database) as store:
-        runs = store.runs(project=config.project, limit=50)
-        if not runs:
-            print(f"No runs recorded for {config.project} in {config.database}")
-            return 1
-        record = next((r for r in runs if r["run_id"] == args.run_id), runs[0]) if args.run_id else runs[0]
-        if args.run_id and record["run_id"] != args.run_id:
-            print(f"No run {args.run_id!r} in {config.database}", file=sys.stderr)
-            return 1
+        if args.run_id:
+            # Look the id up directly — filtering a page of recent runs made
+            # any older run report as missing when it was simply further back.
+            record = store.run(args.run_id)
+            if record is None:
+                print(f"No run {args.run_id!r} in {config.database}", file=sys.stderr)
+                return 1
+        else:
+            runs = store.runs(project=config.project, limit=1)
+            if not runs:
+                print(f"No runs recorded for {config.project} in {config.database}")
+                return 1
+            record = runs[0]
 
         rankings = store.rankings(record["run_id"])
         print(f"\n{config.project} — run {record['run_id']}")
