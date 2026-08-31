@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Agent Arena</title>
+<link rel="stylesheet" href="/app.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏟️</text></svg>">
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="#/" data-link>
+    <span class="brand-mark" aria-hidden="true">◆</span>
+    <span>Agent Arena</span>
+  </a>
+  <nav>
+    <a href="#/" data-link>Your evaluations</a>
+    <a href="#/new" data-link class="btn btn-primary btn-sm">New evaluation</a>
+  </nav>
+</header>
+
+<main id="app" aria-live="polite">
+  <div class="loading">Loading…</div>
+</main>
+
+<div id="toast" class="toast" role="status" hidden></div>
+
+<script src="/app.js"></script>
+</body>
+</html>

@@ -47,6 +47,8 @@ agent_arena = [
     "connectors/*.json",
     "templates/*",
     "templates/**/*",
+    # The browser UI is served from disk at runtime, so it must ship in the wheel.
+    "web/static/*",
 ]
 
 [tool.pytest.ini_options]

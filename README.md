@@ -86,10 +86,11 @@ The arena inverts that. It knows nothing about any task:
 | `agent_arena/connectors/` | Providers: Anthropic, OpenAI, Gemini, LiteLLM, local, mock |
 | `agent_arena/scorers/` | The 10 built-in eval types |
 | `agent_arena/templates/` | What `arena init` copies |
+| `agent_arena/web/` | The browser UI — server, JSON API, plain-English layer |
 | `projects/support_triage/` | Example 1 — high-volume classification, offline |
 | `projects/doc_extraction/` | Example 2 — structured JSON extraction, offline |
 | `projects/local_demo/` | Example 3 — models on your own machine |
-| `tests/` | 217 tests covering the engine |
+| `tests/` | 258 tests covering the engine and the UI |
 
 ## How to use it
 
@@ -116,6 +117,45 @@ arena evaluate --project projects/support_triage
 
 Note the winner is not the most accurate model. At this volume, with these
 weights, the small one wins — and that is the entire point of the tool.
+
+### Without a terminal
+
+The people who make this decision — who owns the support queue, what the budget
+is, how slow is too slow — are usually not the people who write YAML. So the
+same engine has a browser front end:
+
+```bash
+arena ui                    # opens http://localhost:8420
+```
+
+It asks *what job is the AI doing?* in plain language, writes the same
+`config.yaml` a developer would have written, and reports the outcome as
+sentences rather than scores:
+
+> **Use Small/fast (simulated).**
+> It gets 83 out of 100 right, costs 6¢ per 1,000 uses, and replies in 190
+> milliseconds (instant).
+> *Small/fast is not the most accurate — Frontier-class gets about 14 more
+> answers right in every 100 — but it is 4.9× cheaper and 7.9× faster.*
+>
+> **Cannot use: Tiny (simulated).** It only gets 50 out of 100 right, which is
+> below the floor you set.
+
+Three things it does that the CLI does not:
+
+- **A wizard instead of a config file** — pick the kind of job from seven plain
+  descriptions ("sort things into categories", "pull specific details out of
+  text"), and the right scorer, prompt and starting weights are chosen for you.
+- **What-if sliders** — change how much you care about accuracy, cost or speed
+  and the ranking is recalculated *from the answers already collected*. No new
+  API calls, no new spend. It runs the real `build_leaderboard`, so a what-if
+  and a fresh run can never disagree.
+- **Plain-English disqualifications** — the reason a model was ruled out, plus
+  whether the fix is a better model or a more realistic requirement.
+
+It is stdlib-only like the engine (no Flask, no npm, no CDN), binds to localhost,
+and works offline. `arena ui --projects-dir path/to/projects --port 8421` if you
+keep projects elsewhere.
 
 ### Your own project
 
@@ -299,8 +339,9 @@ grader will tell you whether a failure was coordination or capability.
 
 ```
 agent_arena/                    the installable engine  ─┐
+agent_arena/web/                the browser UI (`arena ui`)│
 projects/                       example + your projects  ├─ Universal Arena
-tests/                          217 engine tests         │
+tests/                          258 engine + UI tests    │
 demo/  demo.md                  local-model walkthrough ─┘
 
 studies/multi_agent_handoff/    the frozen study (code, docs, committed sweep)
@@ -315,4 +356,5 @@ docs/adr/                       ADRs 0001–0011, one sequence spanning both sys
 - **[Demo](demo.md)** — end-to-end walkthrough with local models and real output
 - **[Sample report](docs/EXAMPLE_REPORT.md)** — what the arena produces
 - **[Multi-agent study](studies/multi_agent_handoff/README.md)** — the frozen study
+- **[Roadmap](docs/ROADMAP_10X.md)** — where this goes next, and what it deliberately will not become
 - **[Decisions (ADRs)](docs/DECISIONS.md)** — why trace formats, retry strategy, failure injection, and the config-driven design are what they are. The **System** column says which project each decision governs.
