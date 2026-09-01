@@ -96,6 +96,19 @@ def build_parser() -> argparse.ArgumentParser:
     tests.add_argument("--tags", nargs="+")
     tests.add_argument("--limit", type=int)
 
+    ui = sub.add_parser("ui", help="open the point-and-click interface in a browser")
+    ui.add_argument(
+        "--projects-dir", default="projects",
+        help="folder holding your project folders (default: projects)",
+    )
+    ui.add_argument("--port", type=int, default=8420)
+    ui.add_argument(
+        "--host", default="127.0.0.1",
+        help="bind address. Anything but localhost exposes an unauthenticated UI",
+    )
+    ui.add_argument("--no-browser", action="store_true", help="do not open a browser window")
+    ui.add_argument("--verbose", action="store_true", help="log every request")
+
     validate = sub.add_parser("validate", help="check a project's config and test files")
     add_project(validate)
 
@@ -374,7 +387,7 @@ def cmd_models(args: argparse.Namespace) -> int:
         rows.append(
             [
                 model,
-                card.provider or "?",
+                card.provider or provider or "?",
                 f"${card.input_usd_per_mtok:g}" if card.input_usd_per_mtok is not None else "?",
                 f"${card.output_usd_per_mtok:g}" if card.output_usd_per_mtok is not None else "?",
                 f"{card.context_tokens:,}" if card.context_tokens else "?",
@@ -391,7 +404,8 @@ def cmd_models(args: argparse.Namespace) -> int:
             "\n  No pricing for: "
             + ", ".join(unpriced)
             + "\n  Cost is left out of their composite rather than guessed. Add prices under"
-            "\n  `pricing.models.<id>` in your project config to include them."
+            "\n  `pricing.models.<id>` in your project config to include them —"
+            "\n  or, for a `run:` target, return a `cost_usd` from the callable."
         )
     return 0
 
@@ -478,6 +492,19 @@ def cmd_validate(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 
 
+def cmd_ui(args: argparse.Namespace) -> int:
+    from .web.server import serve  # noqa: PLC0415 — pulls in the static assets
+
+    serve(
+        projects_dir=args.projects_dir,
+        host=args.host,
+        port=args.port,
+        open_browser=not args.no_browser,
+        verbose=args.verbose,
+    )
+    return 0
+
+
 def _progress_printer():
     state = {"last": 0}
 
@@ -525,6 +552,7 @@ COMMANDS = {
     "scorers": cmd_scorers,
     "tests": cmd_tests,
     "validate": cmd_validate,
+    "ui": cmd_ui,
 }
 
 

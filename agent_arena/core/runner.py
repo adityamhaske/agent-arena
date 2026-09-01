@@ -439,6 +439,7 @@ class ArenaRunner:
                 "trial": trial,
                 "model_key": spec.key,
                 "reference": case.reference,
+                "tags": list(case.tags),
             },
         )
         request = self.hooks.apply_pre_request(request, case, spec.key)
@@ -455,13 +456,18 @@ class ArenaRunner:
         result.latency_ms = generation.latency_ms
         result.input_tokens = generation.input_tokens
         result.output_tokens = generation.output_tokens
-        card = self.price_book.get(spec.model, provider=connector.provider)
-        result.cost_usd = card.cost_usd(
-            generation.input_tokens,
-            generation.output_tokens,
-            generation.cache_read_tokens,
-            generation.cache_write_tokens,
-        )
+        if generation.cost_usd is not None:
+            # A connector that knows its real spend beats the catalog's estimate.
+            result.cost_usd = generation.cost_usd
+        else:
+            card = self.price_book.get(spec.model, provider=connector.provider)
+            result.cost_usd = card.cost_usd(
+                generation.input_tokens,
+                generation.output_tokens,
+                generation.cache_read_tokens,
+                generation.cache_write_tokens,
+            )
+        result.metrics.update(generation.metrics)
 
         context = ScoringContext(
             test_case=case,

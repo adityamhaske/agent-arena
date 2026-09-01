@@ -1,0 +1,68 @@
+# Example project 3 of 3 — comparing ARCHITECTURES rather than models.
+#
+# The other two example projects hold the architecture fixed and vary the model.
+# This one does the opposite: one deterministic "model", three ways of wiring
+# agents together. It is the multi-agent study's question asked in the arena's
+# terms, so the answer comes back as a ranked, costed, disqualifying leaderboard
+# instead of a pass/fail table.
+#
+# Runs entirely offline — no API key, no network.
+#
+#   arena evaluate --project projects/pipeline_demo
+
+project: pipeline_demo
+description: >
+  Route support tickets under an escalation policy where one fact — whether the
+  account is on credit hold — is held by the first stage and needed by the last.
+  Splitting that across agents is where information goes missing, so the thing
+  being compared is the wiring, not the model.
+
+# `targets:` is the same list as `models:`, under a name that reads better when
+# the competitors are pipelines. Both can appear in one project.
+targets:
+  - key: single_agent
+    run: pipelines/support.py:single_agent
+    label: "Single agent (control)"
+
+  - key: peer_to_peer
+    run: pipelines/support.py:peer_to_peer
+    label: "Peer-to-peer (fixed handoff)"
+
+  - key: supervisor_worker
+    run: pipelines/support.py:supervisor_worker
+    label: "Supervisor + worker (free-text summary)"
+
+defaults:
+  max_tokens: 16
+  temperature: 0
+
+run:
+  trials: 1          # the pipelines are deterministic; repeats would tell us nothing
+  concurrency: 4
+  timeout_s: 30
+  retries: 0
+
+metrics:
+  weights:
+    accuracy: 0.70   # a wrong escalation is the expensive outcome here
+    cost: 0.15
+    latency: 0.15
+  cost:
+    budget_usd_per_1k_calls: 5.0
+  latency:
+    target_ms: 500
+
+constraints:
+  # The point of the example: an architecture that loses the flag is not "third
+  # place", it is unusable — and the arena says so with the reason attached.
+  min_accuracy: 0.80
+
+scorers:
+  default: classification
+  options:
+    classification:
+      labels: [on_hold, escalate_tier_1, escalate_tier_2, escalate_tier_3]
+
+output:
+  dir: results
+  formats: [markdown, json]

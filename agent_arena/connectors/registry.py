@@ -18,6 +18,7 @@ from typing import Any, Callable
 
 from ..core.errors import ConnectorError
 from .base import Connector
+from .callable_target import CallableConnector
 from .local import LocalConnector
 from .mock import MockConnector
 from .providers import (
@@ -37,6 +38,8 @@ CONNECTORS: dict[str, type[Connector]] = {
     "ollama": LocalConnector,
     "lmstudio": LocalConnector,
     "mock": MockConnector,
+    "callable": CallableConnector,
+    "pipeline": CallableConnector,
 }
 
 _PREFIX_RULES: tuple[tuple[tuple[str, ...], str], ...] = (
@@ -104,6 +107,9 @@ def build_connector(spec: Any, defaults: dict[str, Any] | None = None) -> Connec
         api_key = os.environ.get(_API_KEY_ENVS[provider])
 
     params = {**(defaults or {}).get("params", {}), **spec.params}
+    if provider == "callable":
+        params["run"] = spec.run or spec.model
+        params["base_dir"] = getattr(spec, "base_dir", None)
     # Generation-level settings live on the request, not the client.
     for reserved in ("temperature", "max_tokens", "system"):
         params.pop(reserved, None)
@@ -127,7 +133,9 @@ def build_connector(spec: Any, defaults: dict[str, Any] | None = None) -> Connec
 #: Several spellings route to the same connector. Canonicalising here keeps
 #: the model-card lookup, the cost calculation and the report in agreement —
 #: `provider: ollama` must find the same `local` card as a bare `llama3.2`.
-_PROVIDER_ALIASES = {"ollama": "local", "lmstudio": "local", "google": "gemini"}
+_PROVIDER_ALIASES = {
+    "ollama": "local", "lmstudio": "local", "google": "gemini", "pipeline": "callable",
+}
 
 
 def canonical_provider(provider: str | None) -> str | None:
@@ -140,6 +148,10 @@ def resolve_provider(spec: Any, strict: bool = False) -> str | None:
     Returns ``None`` rather than raising when the id is unrecognisable (unless
     ``strict``), so reporting paths can describe a model they could not route.
     """
+    if getattr(spec, "run", None):
+        # A target names the callable to execute; nothing about the id can
+        # override that.
+        return "callable"
     if getattr(spec, "provider", None):
         return canonical_provider(spec.provider)
     try:
@@ -157,8 +169,9 @@ def resolve_provider(spec: Any, strict: bool = False) -> str | None:
 def requires_api_key(spec: Any) -> str | None:
     """The env var this model needs, or ``None`` when it needs no credentials."""
     provider = resolve_provider(spec)
-    # Local and mock models run without credentials by definition.
-    if provider in (None, "mock", "local", "ollama", "lmstudio"):
+    # Local and mock models run without credentials by definition; a callable
+    # target handles its own, inside the pipeline we are calling.
+    if provider in (None, "mock", "local", "ollama", "lmstudio", "callable"):
         return None
     if spec.api_key_env:
         return spec.api_key_env

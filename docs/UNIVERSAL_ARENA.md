@@ -28,7 +28,9 @@ arena evaluate --project projects/support_triage   # runs offline, no API key
 9. [Hooks](#hooks)
 10. [Results database](#results-database)
 11. [CLI and Python API](#cli-and-python-api)
-12. [Design decisions worth knowing](#design-decisions-worth-knowing)
+12. [Pipeline targets — evaluating a system](#pipeline-targets--evaluating-a-system)
+13. [The browser UI](#the-browser-ui)
+14. [Design decisions worth knowing](#design-decisions-worth-knowing)
 
 ---
 
@@ -398,6 +400,7 @@ arena scorers  --project P        # available eval types, built-in and local
 arena report   --project P [--run-id ID]
 arena history  --project P [--model K] [--flaky]
 arena init     PATH
+arena ui       [--projects-dir DIR] [--port 8420] [--host 127.0.0.1] [--no-browser]
 ```
 
 `--fail-under` exits non-zero when the best composite falls below a threshold,
@@ -416,6 +419,213 @@ for entry in result.leaderboard.ranked:
 Lower-level pieces (`ArenaRunner`, `ProjectConfig`, `ScorerRegistry`,
 `PriceBook`, `ResultStore`) are all importable if you want to embed the arena
 in something larger.
+
+---
+
+## Pipeline targets — evaluating a system
+
+The arena's default unit is one prompt → one completion. Most shipped systems
+are not that: they retrieve, plan, call tools, critique, then synthesise. A
+**target** puts one of those on the same leaderboard as a plain model.
+
+```yaml
+targets:
+  - key: rag_v1
+    run: pipelines/rag.py:answer
+  - key: rag_v2_with_critic
+    run: pipelines/rag.py:answer
+    params: {critic: true}          # reaches the callable as `params`
+
+models:
+  - key: single_call_baseline       # the control, in the same run
+    model: claude-sonnet-5
+```
+
+`targets:` and `models:` are **one list** under two names — use whichever reads
+better; a project may use both. Everything downstream is unchanged: the same
+scorers grade a target, the same weights rank it, the same constraints can
+disqualify it.
+
+### The callable contract
+
+```python
+def answer(prompt):
+    return "billing"
+```
+
+That is the whole minimum. The prompt arrives positionally; anything else is
+optional and **you receive only what you declare**, so a target never has to
+accept arguments it does not care about:
+
+| Keyword | What it carries |
+|---|---|
+| `messages` | The case's input as a role/content list |
+| `system` | The project's system prompt |
+| `test_id`, `trial` | Which case, which repeat |
+| `tags` | The case's tags |
+| `reference` | The expected answer — for logging, not for cheating |
+| `params` | The entry's `params:` merged with the request's |
+
+```python
+def answer(prompt, *, tags, test_id):     # gets exactly these two
+    ...
+
+def answer(prompt, **context):            # gets all of them
+    ...
+```
+
+### Reporting what it cost
+
+Return a string, or a mapping when the pipeline knows more than the arena can
+see from outside:
+
+```python
+def answer(prompt):
+    return {
+        "output": "...",          # or "text" / "answer"
+        "input_tokens": 4210,     # totalled across every internal call
+        "output_tokens": 380,
+        "cost_usd": 0.0092,       # real end-to-end spend for this one case
+        "latency_ms": 1840.0,
+        "metrics": {"agent_calls": 3, "retrieved_docs": 8},
+    }
+```
+
+Two things follow, both deliberate:
+
+- **A reported `cost_usd` is trusted over the price catalog.** The catalog
+  cannot price a pipeline; the pipeline can. Report nothing and cost is left
+  unmeasured rather than guessed — and its weight is redistributed, with a note
+  saying so.
+- **`metrics` are weightable by name**, exactly like a scorer's custom metrics.
+  Put `agent_calls: 0.1` in `metrics.weights` and the leaderboard will start
+  preferring architectures that use fewer agents.
+
+### Failure handling
+
+A target that raises fails that call, not the run — the same as a provider
+error, retried per `run.retries` and then recorded. A target whose file or
+function is missing is caught at **load** time by `arena validate`, and its
+import is checked in preflight, so a typo costs nothing rather than failing on
+the first case after other models have already been paid for.
+
+### The worked example
+
+`projects/pipeline_demo/` compares three architectures for one support-triage
+task, fully offline:
+
+```
+  #  model              composite  accuracy  cost   latency  status
+  1  single_agent       0.907      100.0%    $0.90  220ms    ranked
+  -  peer_to_peer       —          27.3%     $1.80  440ms    DISQUALIFIED
+  -  supervisor_worker  —          63.6%     $2.70  660ms    DISQUALIFIED
+
+  ✗ peer_to_peer: accuracy 27.3% below the required 80.0%
+  ✗ supervisor_worker: accuracy 63.6% below the required 80.0%
+```
+
+The task hides one fact — whether the account is on credit hold — that the first
+stage sees and the last stage needs. `peer_to_peer` hands off a fixed-format
+string with no field for it, so it loses it every time. `supervisor_worker`
+hands off a free-text summary, which keeps the fact when it is prominent and
+drops it when it is buried late in a long ticket — the intermittent failure that
+reads like a prompt problem for weeks before anyone finds the structural cause.
+
+This is the multi-agent study's finding, made rankable: the study proved a
+coordination failure exists and is separable from a capability failure; targets
+let you price it and gate on it. See
+[the study](../studies/multi_agent_handoff/README.md) for the original
+experiment.
+
+---
+
+## The browser UI
+
+```bash
+arena ui                                   # http://localhost:8420
+arena ui --projects-dir ~/evals --port 8421
+```
+
+Same engine, no terminal. It exists because the person who knows the accuracy
+floor and the budget is usually not the person who writes YAML, and a tool whose
+answer only reaches developers is answering the wrong audience.
+
+### What it does
+
+| Screen | What it is for |
+|---|---|
+| Your evaluations | Every project folder under `--projects-dir`, with its last winner |
+| New evaluation | A five-step wizard that writes `config.yaml` + `tests.yaml` |
+| Evaluation | What will run, what matters, the examples, and the Run button |
+| Running | Live progress plus a feed of what each model actually answered |
+| Result | The verdict in sentences, the full table, and what-if sliders |
+| Past runs | Every stored run and an accuracy trend per model |
+
+### The wizard
+
+Step one asks what job the AI is doing, in seven plain descriptions rather than
+by scorer name:
+
+| The question it asks | What it configures |
+|---|---|
+| Sort things into categories | `classification`, plus the label list |
+| Pull specific details out of text | `json_match` |
+| Answer questions | `semantic` |
+| Find a specific fact | `contains` |
+| Calculate a number | `numeric` |
+| Write or summarise | `llm_judge` (warns that the judge costs money) |
+| Match an exact answer | `exact_match` |
+
+Each preset also carries a starting system prompt, a sensible `max_tokens`, and
+default weights — a classification job starts cost-sensitive, an extraction job
+starts accuracy-dominated. The output is an ordinary project folder: the CLI can
+run it, and a developer can edit it by hand afterwards.
+
+### What-if re-scoring
+
+The one thing the UI can do that the CLI cannot. Move the priority sliders on a
+finished run and the leaderboard is rebuilt **from the answers already stored**
+— no model calls, no spend. It rehydrates `CallResult` rows out of SQLite and
+calls the same `build_leaderboard`, so a what-if and a fresh run with those
+weights cannot disagree.
+
+This is usually where the real conversation happens: *"we said cost mattered a
+quarter — if it only mattered a twentieth, would we still pick this?"*
+
+### Plain-English layer
+
+`agent_arena/web/language.py` holds every translation, as pure functions over
+already-computed results. It invents no judgement of its own — the ranking, the
+disqualifications and the caveats all come from `core/metrics.py`; this module
+only re-words them.
+
+```
+0.833                        →  "83 out of 100"
+$0.06/1k calls               →  "6¢ per 1,000 uses"
+190 ms                       →  "190 milliseconds (instant)"
+accuracy 50.0% below 70.0%   →  "It only gets 50 out of 100 right,
+                                 which is below the floor you set."
+```
+
+The "too close to call" rule is enforced in the UI too: inside 0.02 composite the
+verdict drops to low confidence and says so, rather than crowning a winner a
+twelve-case sweep cannot support.
+
+### Operational notes
+
+- **Stdlib only.** `http.server` plus vanilla JS. No Flask, no npm, no CDN. It
+  works on a locked-down laptop with no internet.
+- **Localhost by default, and no login.** It reads and writes your project files
+  and can spend against your API keys. Binding it to a non-loopback address puts
+  that on your network unauthenticated — the command prints a warning if you do.
+- **Guards:** project names are restricted to a safe character set and re-checked
+  against the projects directory before any write; the `Host` header is
+  allow-listed against DNS rebinding; static serving cannot walk out of
+  `web/static/`; a second click on Run returns the in-flight job instead of
+  starting a second paid run.
+- **Editing limits.** The visual editors refuse to rewrite a project that spreads
+  its test cases across several files or uses custom hooks, rather than
+  clobbering something it does not fully model.
 
 ---
 
