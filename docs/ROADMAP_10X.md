@@ -5,7 +5,7 @@ wishlist. Each lever names the gap, what to build, and roughly what it costs.
 
 The honest starting point: **the engine is good and its reach is tiny.** The
 scoring, the constraints, the disqualification logic, the "too close to call"
-note — that machinery is sound and there are 258 tests holding it in place. What
+note — that machinery is sound and there are 282 tests holding it in place. What
 limits the project is not the quality of its answers. It is who can ask it a
 question, what it is allowed to be asked about, and whether anyone asks twice.
 
@@ -41,15 +41,15 @@ rather than the capability, and the engine was already good enough to deserve it
 
 ---
 
-## 2. Evaluate *systems*, not just models
+## 2. Evaluate *systems*, not just models  ✅ shipped
 
-**The gap.** The arena's unit of comparison is one prompt → one completion.
+**The gap.** The arena's unit of comparison was one prompt → one completion.
 Almost nobody ships that any more. They ship a pipeline: retrieve, plan, call
-tools, critique, synthesise. Today you *can* evaluate one — register a connector
-that wraps your pipeline — but that path is undocumented, relies on a
-`scorers/*.py` import side-effect, and is not what `config.yaml` looks like.
+tools, critique, synthesise. You *could* evaluate one by registering a connector
+that wrapped your pipeline, but that path was undocumented, relied on a
+`scorers/*.py` import side-effect, and was not what `config.yaml` looked like.
 
-**What to build.** Make "the thing under test" a first-class config field:
+**What shipped.** "The thing under test" is now a first-class config field:
 
 ```yaml
 targets:
@@ -59,22 +59,24 @@ targets:
     run: pipelines/rag.py:answer
     params: {critic: true}
   - key: baseline_single_call
-    model: claude-sonnet-5            # a plain model is just a target too
+    model: claude-sonnet-5            # a plain model competes in the same run
 ```
 
-The runner already has the right shape for this — `Connector.generate` is the
-seam, and `CallResult` already carries per-call cost and latency. The work is a
-`CallableConnector`, letting a target declare its own token/cost accounting, and
-teaching `arena models` to describe a target that has no model card.
+`targets:` and `models:` are one list, so a pipeline is graded, ranked and
+disqualified by exactly the machinery a model is. A target may return a plain
+string, or a mapping reporting its own end-to-end spend and custom metrics —
+which the arena then trusts over the price catalog, because a pipeline is the
+only thing that knows what its internal calls cost.
 
-**Why it is the biggest capability jump.** It changes the question from *"which
-model?"* to *"which design?"* — and design decisions are worth far more than
-model decisions. It is also the bridge to the multi-agent study sitting in this
-same repo: that study's whole finding is that architecture choices produce
-failures no model swap can fix, and the arena currently cannot measure them.
+`projects/pipeline_demo/` is the worked example, and it is the bridge to the
+multi-agent study in this repo: three architectures for one task, offline and
+deterministic, where a rigid handoff loses a required flag every time (27%) and
+a free-text summary loses it only when the fact sits late in the ticket (64%).
+Both are disqualified against an 80% floor, with the reason printed — and the
+extra agents show up as real money in the cost column. The study proved that
+failure exists; this makes it rankable and costable.
 
-**Cost.** Medium. ~500 lines in `connectors/` and `core/config.py`, plus docs.
-No change to scoring, metrics or the store.
+**Cost.** Done. ~900 lines including tests and the example.
 
 ---
 
@@ -172,16 +174,17 @@ embedding dependency — keep it optional, consistent with the lazy-import rule.
 ## Sequencing
 
 ```
-now ──▶ 1. UI                    ✅ shipped — widens who can ask
-        2. Pipeline targets        widens what can be asked about
-        3. Confidence intervals    makes the answer defensible
+        1. UI                    ✅ shipped — widened who can ask
+        2. Pipeline targets      ✅ shipped — widened what can be asked about
+now ──▶ 3. Confidence intervals    makes the answer defensible
         4. Continuous runs         makes the answer stay true
         5. Cases from production   makes the question worth asking
 ```
 
-2 and 3 are independent and can run in parallel. 4 depends on nothing. 5 gets
-much more valuable after 2, because a pipeline target produces far richer
-per-case output to mine.
+3 and 4 are independent and can run in parallel. 5 got more valuable once 2
+landed, because a pipeline target produces far richer per-case output to mine —
+a target can already emit its own metrics, so the data to mine is being
+collected now.
 
 ## What I would deliberately *not* build
 

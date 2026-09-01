@@ -37,7 +37,7 @@ def test_validate_surfaces_a_config_error(tmp_path: Path, capsys) -> None:
         [{"id": "a", "input": "q", "reference": "a"}],
     )
     assert main(["validate", "--project", str(project)]) == 1
-    assert "at least one model" in capsys.readouterr().err
+    assert "at least one entry under 'models' (or 'targets')" in capsys.readouterr().err
 
 
 def test_tests_lists_the_cases(simple_project: Path, capsys) -> None:

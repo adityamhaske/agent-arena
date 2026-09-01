@@ -387,7 +387,7 @@ def cmd_models(args: argparse.Namespace) -> int:
         rows.append(
             [
                 model,
-                card.provider or "?",
+                card.provider or provider or "?",
                 f"${card.input_usd_per_mtok:g}" if card.input_usd_per_mtok is not None else "?",
                 f"${card.output_usd_per_mtok:g}" if card.output_usd_per_mtok is not None else "?",
                 f"{card.context_tokens:,}" if card.context_tokens else "?",
@@ -404,7 +404,8 @@ def cmd_models(args: argparse.Namespace) -> int:
             "\n  No pricing for: "
             + ", ".join(unpriced)
             + "\n  Cost is left out of their composite rather than guessed. Add prices under"
-            "\n  `pricing.models.<id>` in your project config to include them."
+            "\n  `pricing.models.<id>` in your project config to include them —"
+            "\n  or, for a `run:` target, return a `cost_usd` from the callable."
         )
     return 0
 

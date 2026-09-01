@@ -58,7 +58,7 @@ def test_duplicate_model_keys_rejected(tmp_path: Path) -> None:
 
 def test_missing_models_is_an_error(tmp_path: Path) -> None:
     root = write_project(tmp_path / "p", {"project": "p"}, [])
-    with pytest.raises(ConfigError, match="at least one model"):
+    with pytest.raises(ConfigError, match="at least one entry under"):
         ProjectConfig.load(root)
 
 

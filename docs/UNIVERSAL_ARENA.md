@@ -28,8 +28,9 @@ arena evaluate --project projects/support_triage   # runs offline, no API key
 9. [Hooks](#hooks)
 10. [Results database](#results-database)
 11. [CLI and Python API](#cli-and-python-api)
-12. [The browser UI](#the-browser-ui)
-13. [Design decisions worth knowing](#design-decisions-worth-knowing)
+12. [Pipeline targets — evaluating a system](#pipeline-targets--evaluating-a-system)
+13. [The browser UI](#the-browser-ui)
+14. [Design decisions worth knowing](#design-decisions-worth-knowing)
 
 ---
 
@@ -418,6 +419,123 @@ for entry in result.leaderboard.ranked:
 Lower-level pieces (`ArenaRunner`, `ProjectConfig`, `ScorerRegistry`,
 `PriceBook`, `ResultStore`) are all importable if you want to embed the arena
 in something larger.
+
+---
+
+## Pipeline targets — evaluating a system
+
+The arena's default unit is one prompt → one completion. Most shipped systems
+are not that: they retrieve, plan, call tools, critique, then synthesise. A
+**target** puts one of those on the same leaderboard as a plain model.
+
+```yaml
+targets:
+  - key: rag_v1
+    run: pipelines/rag.py:answer
+  - key: rag_v2_with_critic
+    run: pipelines/rag.py:answer
+    params: {critic: true}          # reaches the callable as `params`
+
+models:
+  - key: single_call_baseline       # the control, in the same run
+    model: claude-sonnet-5
+```
+
+`targets:` and `models:` are **one list** under two names — use whichever reads
+better; a project may use both. Everything downstream is unchanged: the same
+scorers grade a target, the same weights rank it, the same constraints can
+disqualify it.
+
+### The callable contract
+
+```python
+def answer(prompt):
+    return "billing"
+```
+
+That is the whole minimum. The prompt arrives positionally; anything else is
+optional and **you receive only what you declare**, so a target never has to
+accept arguments it does not care about:
+
+| Keyword | What it carries |
+|---|---|
+| `messages` | The case's input as a role/content list |
+| `system` | The project's system prompt |
+| `test_id`, `trial` | Which case, which repeat |
+| `tags` | The case's tags |
+| `reference` | The expected answer — for logging, not for cheating |
+| `params` | The entry's `params:` merged with the request's |
+
+```python
+def answer(prompt, *, tags, test_id):     # gets exactly these two
+    ...
+
+def answer(prompt, **context):            # gets all of them
+    ...
+```
+
+### Reporting what it cost
+
+Return a string, or a mapping when the pipeline knows more than the arena can
+see from outside:
+
+```python
+def answer(prompt):
+    return {
+        "output": "...",          # or "text" / "answer"
+        "input_tokens": 4210,     # totalled across every internal call
+        "output_tokens": 380,
+        "cost_usd": 0.0092,       # real end-to-end spend for this one case
+        "latency_ms": 1840.0,
+        "metrics": {"agent_calls": 3, "retrieved_docs": 8},
+    }
+```
+
+Two things follow, both deliberate:
+
+- **A reported `cost_usd` is trusted over the price catalog.** The catalog
+  cannot price a pipeline; the pipeline can. Report nothing and cost is left
+  unmeasured rather than guessed — and its weight is redistributed, with a note
+  saying so.
+- **`metrics` are weightable by name**, exactly like a scorer's custom metrics.
+  Put `agent_calls: 0.1` in `metrics.weights` and the leaderboard will start
+  preferring architectures that use fewer agents.
+
+### Failure handling
+
+A target that raises fails that call, not the run — the same as a provider
+error, retried per `run.retries` and then recorded. A target whose file or
+function is missing is caught at **load** time by `arena validate`, and its
+import is checked in preflight, so a typo costs nothing rather than failing on
+the first case after other models have already been paid for.
+
+### The worked example
+
+`projects/pipeline_demo/` compares three architectures for one support-triage
+task, fully offline:
+
+```
+  #  model              composite  accuracy  cost   latency  status
+  1  single_agent       0.907      100.0%    $0.90  220ms    ranked
+  -  peer_to_peer       —          27.3%     $1.80  440ms    DISQUALIFIED
+  -  supervisor_worker  —          63.6%     $2.70  660ms    DISQUALIFIED
+
+  ✗ peer_to_peer: accuracy 27.3% below the required 80.0%
+  ✗ supervisor_worker: accuracy 63.6% below the required 80.0%
+```
+
+The task hides one fact — whether the account is on credit hold — that the first
+stage sees and the last stage needs. `peer_to_peer` hands off a fixed-format
+string with no field for it, so it loses it every time. `supervisor_worker`
+hands off a free-text summary, which keeps the fact when it is prominent and
+drops it when it is buried late in a long ticket — the intermittent failure that
+reads like a prompt problem for weeks before anyone finds the structural cause.
+
+This is the multi-agent study's finding, made rankable: the study proved a
+coordination failure exists and is separable from a capability failure; targets
+let you price it and gate on it. See
+[the study](../studies/multi_agent_handoff/README.md) for the original
+experiment.
 
 ---
 

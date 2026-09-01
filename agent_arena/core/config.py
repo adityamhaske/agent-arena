@@ -64,6 +64,17 @@ class ModelSpec:
     provider: str | None = None
     """Explicit provider. When omitted it is inferred from the model id."""
 
+    run: str | None = None
+    """A Python callable to evaluate instead of a model — ``file.py:function``.
+
+    This is how a whole pipeline (retrieval, tools, several agents) competes on
+    the same leaderboard as a single model call. See
+    :mod:`agent_arena.connectors.callable_target`.
+    """
+
+    base_dir: Any = None
+    """Project root, set during config load so ``run`` resolves relative to it."""
+
     params: dict[str, Any] = field(default_factory=dict)
     """Extra generation kwargs merged over the project defaults."""
 
@@ -86,14 +97,22 @@ class ModelSpec:
             return cls(key=raw, model=raw)
         raw = _as_dict(raw, where)
 
+        run = raw.get("run") or raw.get("target") or raw.get("callable")
         model = raw.get("model") or raw.get("id") or raw.get("name")
+        if not model and run:
+            # A target is identified by what it runs, so it needs no model id.
+            model = str(run)
         if not model:
-            raise ConfigError(f"{where} needs a 'model' (or 'id') field")
+            raise ConfigError(
+                f"{where} needs a 'model' (or 'id') field, or a 'run' pointing at "
+                "a callable like 'pipelines/rag.py:answer'"
+            )
 
         key = raw.get("key") or raw.get("id") or model
         return cls(
             key=str(key),
             model=str(model),
+            run=str(run) if run else None,
             provider=raw.get("provider"),
             params=_as_dict(raw.get("params"), f"{where}.params"),
             api_key_env=raw.get("api_key_env"),
@@ -368,13 +387,20 @@ class ProjectConfig:
         data = _as_dict(data, "config")
         root = Path(root)
 
-        raw_models = _as_list(data.get("models"), "models")
+        # `targets:` is the same list under a name that reads better when the
+        # things being compared are pipelines rather than models.
+        raw_models = _as_list(data.get("models"), "models") + _as_list(
+            data.get("targets"), "targets"
+        )
         if not raw_models:
             raise ConfigError(
-                "config must list at least one model under 'models'. "
-                "Example:\n  models:\n    - claude-opus-5\n    - mock:baseline"
+                "config must list at least one entry under 'models' (or 'targets'). "
+                "Example:\n  models:\n    - claude-opus-5\n    - mock:baseline\n"
+                "  targets:\n    - key: my_pipeline\n      run: pipelines/rag.py:answer"
             )
         models = [ModelSpec.parse(raw, i) for i, raw in enumerate(raw_models)]
+        for model in models:
+            model.base_dir = root
 
         seen: dict[str, int] = {}
         for model in models:
@@ -496,6 +522,20 @@ class ProjectConfig:
             resolved = self.resolve(path)
             if not resolved.exists():
                 raise ConfigError(f"scorers.paths entry does not exist: {resolved}")
+
+        for spec in self.models:
+            if not spec.run:
+                continue
+            if ":" not in spec.run:
+                raise ConfigError(
+                    f"model {spec.key!r}: run must be 'path/to/file.py:function' "
+                    f"or 'package.module:function', got {spec.run!r}"
+                )
+            target, _, _ = spec.run.partition(":")
+            if target.endswith(".py") and not self.resolve(target).exists():
+                raise ConfigError(
+                    f"model {spec.key!r}: run target does not exist: {self.resolve(target)}"
+                )
 
         if self.pricing_path and not self.resolve(self.pricing_path).exists():
             raise ConfigError(f"pricing.path does not exist: {self.resolve(self.pricing_path)}")

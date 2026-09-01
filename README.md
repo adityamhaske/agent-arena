@@ -5,7 +5,7 @@ evidence over vibes** — and answer opposite questions about LLM systems.
 
 | | Question it answers | What varies | What is held fixed | Where |
 |---|---|---|---|---|
-| **Universal arena** | Which model should *my* project use, on *my* criteria? | The model | The task, the architecture | `agent_arena/`, `projects/` — [docs/UNIVERSAL_ARENA.md](docs/UNIVERSAL_ARENA.md) |
+| **Universal arena** | Which model — or which *pipeline* — should my project use, on my criteria? | The model, or the whole system | The task | `agent_arena/`, `projects/` — [docs/UNIVERSAL_ARENA.md](docs/UNIVERSAL_ARENA.md) |
 | **Multi-agent study** | Does splitting a task across agents lose information at the handoff? | The architecture | The model, the task | `studies/multi_agent_handoff/` — [its README](studies/multi_agent_handoff/README.md) |
 
 They share no code. Zero imports cross between them.
@@ -27,7 +27,8 @@ So each project pins one variable and moves the other:
        (task held fixed) │   → a model question
                         │
     ────────────────────┼────────────────────►  varies the ARCHITECTURE
-                        │
+                        │  ▲
+                        │  └── the arena reaches here too, via `run:` targets
                         │  Multi-agent study   "we split it into agents
                         │  (model held fixed)   and it broke"
                         │                       → an architecture question
@@ -35,7 +36,17 @@ So each project pins one variable and moves the other:
 
 That is the whole relationship. The study proves the architecture axis is real —
 that a *coordination* failure exists and is separable from a capability failure.
-The arena is the tool for the model axis, built afterward and informed by it.
+The arena was built afterward for the model axis, informed by it.
+
+The arena now reaches the architecture axis as well: a `run:` target puts a whole
+pipeline on the leaderboard, and `projects/pipeline_demo/` reproduces the study's
+finding as a ranked, costed, disqualifying result. That does not make the study
+redundant — the two answer different questions about the same axis. The study
+asks *why* a pipeline failed, and answers it from a replayable trace with a
+failure taxonomy (`coordination_failure` versus `task_failure`). The arena asks
+*which design should we ship, and what does it cost*, and answers from the
+outside without knowing why. You still need the trace to diagnose; you need the
+leaderboard to decide.
 
 The study is also why the arena's design is what it is: **the study's finding is
 that you cannot diagnose a system whose failures you cannot categorize.** Both
@@ -90,7 +101,8 @@ The arena inverts that. It knows nothing about any task:
 | `projects/support_triage/` | Example 1 — high-volume classification, offline |
 | `projects/doc_extraction/` | Example 2 — structured JSON extraction, offline |
 | `projects/local_demo/` | Example 3 — models on your own machine |
-| `tests/` | 258 tests covering the engine and the UI |
+| `projects/pipeline_demo/` | Example 4 — comparing multi-agent architectures, offline |
+| `tests/` | 282 tests covering the engine, targets and the UI |
 
 ## How to use it
 
@@ -156,6 +168,46 @@ Three things it does that the CLI does not:
 It is stdlib-only like the engine (no Flask, no npm, no CDN), binds to localhost,
 and works offline. `arena ui --projects-dir path/to/projects --port 8421` if you
 keep projects elsewhere.
+
+### Comparing pipelines, not just models
+
+Most shipped systems are not one prompt to one model — they retrieve, plan, call
+tools, critique, synthesise. A **target** puts one of those on the leaderboard
+beside a plain model:
+
+```yaml
+targets:
+  - key: rag_v1
+    run: pipelines/rag.py:answer        # any callable: (prompt, **ctx) -> str | dict
+  - key: rag_v2_with_critic
+    run: pipelines/rag.py:answer
+    params: {critic: true}
+
+models:
+  - key: single_call_baseline           # the control, in the same run
+    model: claude-sonnet-5
+```
+
+The callable can be one line — `def answer(prompt): return ...` — or it can
+report its own end-to-end spend and custom metrics, which the arena then trusts
+over the price catalog, because a pipeline is the only thing that knows what its
+internal calls cost.
+
+`projects/pipeline_demo/` is the worked example, and it is where this repo's two
+halves meet. Three architectures, one task, offline:
+
+```
+  #  model              composite  accuracy  cost   latency  status
+  1  single_agent       0.907      100.0%    $0.90  220ms    ranked
+  -  peer_to_peer       —          27.3%     $1.80  440ms    DISQUALIFIED
+  -  supervisor_worker  —          63.6%     $2.70  660ms    DISQUALIFIED
+```
+
+One fact — is the account on credit hold? — is seen by the first stage and
+needed by the last. The rigid handoff has no field for it and loses it every
+time. The free-text summary keeps it when prominent and drops it when buried,
+which is the intermittent failure that reads like a prompt problem for weeks.
+That is the multi-agent study's finding, now ranked, priced, and gated on.
 
 ### Your own project
 
@@ -341,7 +393,7 @@ grader will tell you whether a failure was coordination or capability.
 agent_arena/                    the installable engine  ─┐
 agent_arena/web/                the browser UI (`arena ui`)│
 projects/                       example + your projects  ├─ Universal Arena
-tests/                          258 engine + UI tests    │
+tests/                          282 engine + UI tests    │
 demo/  demo.md                  local-model walkthrough ─┘
 
 studies/multi_agent_handoff/    the frozen study (code, docs, committed sweep)

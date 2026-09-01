@@ -1,0 +1,59 @@
+# Cases for the architecture comparison.
+#
+# The `hold` tag marks the trap: the credit-hold flag is set, so a pipeline that
+# drops it at the handoff answers confidently and wrongly. The `buried` tag
+# marks holds mentioned late in a long ticket — those separate an architecture
+# that always loses the flag from one that loses it sometimes, which is the
+# harder failure to spot in production.
+
+defaults:
+  eval_type: classification
+
+tests:
+  # --- no credit hold: every architecture should get these right ---
+  - id: plain_tier2
+    input: "Tier 2 customer was billed twice this month and wants it corrected."
+    reference: escalate_tier_2
+    tags: [normal]
+
+  - id: plain_tier3
+    input: "Tier 3 enterprise account reports the export endpoint returning errors."
+    reference: escalate_tier_3
+    tags: [normal]
+
+  - id: plain_tier1
+    input: "Tier 1 user cannot reset their password and the email never arrives."
+    reference: escalate_tier_1
+    tags: [normal]
+
+  # --- credit hold, stated up front: a summary is likely to carry it ---
+  - id: hold_upfront_tier3
+    input: "Account is on credit hold. Tier 3 customer is demanding a refund today."
+    reference: on_hold
+    tags: [hold]
+    weight: 2
+
+  - id: hold_upfront_tier1
+    input: "This account is on credit hold; tier 1 user is asking about delivery."
+    reference: on_hold
+    tags: [hold]
+    weight: 2
+
+  # --- credit hold, buried late: only a lossless architecture still sees it ---
+  - id: hold_buried_tier2
+    input: >
+      Tier 2 customer wrote in about a delayed shipment, followed up twice about
+      packaging damage, asked separately whether the warranty still applies, and
+      the account is on credit hold.
+    reference: on_hold
+    tags: [hold, buried]
+    weight: 2
+
+  - id: hold_buried_tier3
+    input: >
+      Tier 3 account raised a long thread covering an integration failure, then a
+      billing discrepancy from March, then a question about seat counts, and
+      finally the account is on credit hold.
+    reference: on_hold
+    tags: [hold, buried]
+    weight: 2

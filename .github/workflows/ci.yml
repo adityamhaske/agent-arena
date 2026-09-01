@@ -58,11 +58,13 @@ jobs:
         run: |
           arena validate --project projects/support_triage
           arena validate --project projects/doc_extraction
+          arena validate --project projects/pipeline_demo
 
       - name: Run the offline sweeps
         run: |
           arena evaluate --project projects/support_triage --quiet --no-report
           arena evaluate --project projects/doc_extraction --quiet --no-report
+          arena evaluate --project projects/pipeline_demo --quiet --no-report
 
       - name: A scaffolded project must run immediately
         run: |

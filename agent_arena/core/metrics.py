@@ -557,18 +557,22 @@ def _leaderboard_notes(
                 "Add `reliability` to metrics.weights to make failures count against a model."
             )
 
-    # Only models we genuinely have no price for — not models that simply
-    # produced no results this run.
+    # Models whose cost could not be measured at all — which is what actually
+    # causes the weight to be redistributed. A missing price card is only one
+    # way to get there: a connector that reports its own spend (a `run:` target
+    # knows its real end-to-end cost) has a cost metric with no card at all, and
+    # must not be reported as excluded.
     unpriced = [
         entry.model
         for entry in board.entries
-        if entry.card is not None and not entry.card.has_pricing
+        if entry.status != "no_data" and aggregates.get(entry.key, {}).get("raw", {}).get("cost")
+        is None
     ]
     if unpriced and config.metrics.weights.get("cost"):
         notes.append(
-            "No pricing for " + ", ".join(sorted(set(unpriced))) + ". Cost was left out of "
-            "their composite (weight redistributed). Add prices under `pricing.models` "
-            "for a like-for-like cost comparison."
+            "No cost measured for " + ", ".join(sorted(set(unpriced))) + ". Cost was left "
+            "out of their composite (weight redistributed). Add prices under "
+            "`pricing.models`, or return a `cost_usd` from a `run:` target."
         )
 
     if len(board.ranked) == 1 and board.disqualified:

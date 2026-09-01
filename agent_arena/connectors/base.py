@@ -56,6 +56,14 @@ class GenerationResult:
     finish_reason: str | None = None
     raw: Any = None
 
+    cost_usd: float | None = None
+    """What this call actually cost, when the connector knows better than the
+    price book. A pipeline target knows its own end-to-end spend across every
+    internal call; the catalog cannot. ``None`` falls back to the price book."""
+
+    metrics: dict[str, float] = field(default_factory=dict)
+    """Extra numbers the connector measured, weightable in config by name."""
+
     @property
     def total_tokens(self) -> int:
         return self.input_tokens + self.output_tokens
@@ -71,6 +79,8 @@ class GenerationResult:
             "cache_write_tokens": self.cache_write_tokens,
             "latency_ms": self.latency_ms,
             "finish_reason": self.finish_reason,
+            "cost_usd": self.cost_usd,
+            "metrics": dict(self.metrics),
         }
 
 
