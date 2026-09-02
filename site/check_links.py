@@ -24,6 +24,25 @@ OUT = Path(__file__).resolve().parent / "_build"
 HREF = re.compile(r'(?:href|src)="([^"]+)"')
 EXTERNAL = ("http://", "https://", "mailto:", "data:", "#", "//")
 
+#: Every page links the stylesheet at `<base>/assets/style.css`, so the prefix
+#: in front of that is the base path the site was built with.
+BASE_MARKER = re.compile(r'href="([^"]*)/assets/style\.css"')
+
+
+def detect_base() -> str:
+    """Read the base path back out of the build rather than being told it.
+
+    Passing SITE_BASE to the build and forgetting it here silently marks every
+    prefixed link broken — which is exactly how this checker first failed. The
+    output knows what it was built with, so ask it.
+    """
+    index = OUT / "index.html"
+    if index.is_file():
+        match = BASE_MARKER.search(index.read_text(encoding="utf-8"))
+        if match:
+            return match.group(1).rstrip("/")
+    return os.environ.get("SITE_BASE", "").rstrip("/")
+
 
 def target_exists(link: str, base: str) -> bool:
     """Does this path resolve to something the deploy will actually serve?"""
@@ -51,7 +70,7 @@ def main() -> int:
         print(f"error: {OUT} does not exist — run `python site/build.py` first.")
         return 2
 
-    base = os.environ.get("SITE_BASE", "").rstrip("/")
+    base = detect_base()
     pages = sorted(OUT.rglob("*.html"))
     if not pages:
         print(f"error: no pages found in {OUT}")

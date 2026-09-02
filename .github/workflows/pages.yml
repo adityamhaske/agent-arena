@@ -32,6 +32,10 @@ jobs:
   build:
     name: build
     runs-on: ubuntu-latest
+    env:
+      # Job-scoped so every step agrees on it. Project pages are served from
+      # /<repo>/, and deriving it from the repo name keeps a fork working.
+      SITE_BASE: /${{ github.event.repository.name }}
     permissions:
       contents: read
       pages: write
@@ -55,9 +59,7 @@ jobs:
         run: pip install -r site/requirements.txt
 
       - name: Build
-        # Project pages are served from /<repo>/, so every internal link needs
-        # that prefix. Deriving it from the repo name keeps a fork working.
-        run: SITE_BASE="/${GITHUB_REPOSITORY#*/}" python site/build.py
+        run: python site/build.py
 
       - name: Check for broken internal links
         run: python site/check_links.py
