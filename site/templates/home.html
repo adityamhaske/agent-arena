@@ -49,16 +49,38 @@
   <div class="topbar-inner">
     <a class="brand" href="{{base}}/"><span class="brand-mark" aria-hidden="true"></span>{{site_title}}</a>
     <nav class="top-links">
-      <a href="#why">Why this</a>
       <a href="{{base}}/guide/">Guide</a>
       <a href="{{base}}/study/">Study</a>
       <a href="{{base}}/releases/">Releases</a>
       <a href="{{base}}/roadmap/">Roadmap</a>
       <a href="{{repo}}">GitHub</a>
     </nav>
+    <button class="icon-btn nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-label="Toggle navigation">☰</button>
     <button class="icon-btn" type="button" data-theme-toggle aria-label="Switch colour theme" title="Switch colour theme">◐</button>
   </div>
 </header>
+
+<div class="nav-backdrop" id="nav-backdrop" aria-hidden="true"></div>
+<aside class="sidebar mobile-only-drawer" id="sidebar" aria-label="Navigation">
+  <div class="nav-group">
+    <h4>Documentation</h4>
+    <ul>
+      <li><a href="{{base}}/guide/">Universal Arena guide</a></li>
+      <li><a href="{{base}}/study/">Multi-agent handoff study</a></li>
+      <li><a href="{{base}}/demo/">Demo walkthrough</a></li>
+      <li><a href="{{base}}/example-report/">Sample report</a></li>
+    </ul>
+  </div>
+  <div class="nav-group">
+    <h4>Project</h4>
+    <ul>
+      <li><a href="{{base}}/releases/">Releases</a></li>
+      <li><a href="{{base}}/roadmap/">Roadmap</a></li>
+      <li><a href="{{base}}/decisions/">Decisions (ADRs)</a></li>
+      <li><a href="{{repo}}">GitHub repository</a></li>
+    </ul>
+  </div>
+</aside>
 
 <main id="content">
 
@@ -242,60 +264,6 @@
   </div>
 </section>
 
-<!-- --------------------------------------------------------------- ui -->
-<section class="section">
-  <div class="wrap">
-    <div class="section-head">
-      <div class="kicker">Not just for developers</div>
-      <h2>The people who set the budget do not write YAML</h2>
-      <p>
-        <code>arena ui</code> serves the same engine from a browser: a wizard that asks what job
-        the AI is doing in plain language, and results written as sentences instead of scores.
-      </p>
-    </div>
-
-    <div class="split-2">
-      <div class="panel">
-        <blockquote style="margin:0">
-          <p><strong>Use Small/fast (simulated).</strong> It gets 83 out of 100 right, costs 6¢ per
-          1,000 uses, and replies in 190 milliseconds (instant).</p>
-          <p style="margin-bottom:0"><em>Small/fast is not the most accurate — Frontier-class gets
-          about 14 more answers right in every 100 — but it is 4.9× cheaper and 7.9× faster.</em></p>
-        </blockquote>
-        <p style="margin:1rem 0 0;color:var(--ink-2);font-size:.92rem">
-          Disqualifications come with the reason <em>and</em> the remedy, so a non-technical reader
-          knows whether to change the model or change the requirement.
-        </p>
-      </div>
-
-      <div>
-        <ul class="feature-list">
-          <li><span class="mark">▸</span><span><b>A wizard instead of a config file.</b>
-            Pick the job from seven plain descriptions; the right scorer, prompt and starting
-            weights are chosen for you. The output is an ordinary project folder the CLI can run.</span></li>
-          <li><span class="mark">▸</span><span><b>What-if sliders.</b>
-            Change what you care about and the ranking is rebuilt from answers already collected —
-            no new model calls, no new spend.</span></li>
-          <li><span class="mark">▸</span><span><b>Stdlib only.</b>
-            No Flask, no npm, no CDN. It works on a locked-down laptop with no internet.</span></li>
-        </ul>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ------------------------------------------------------------ numbers -->
-<section class="section">
-  <div class="wrap">
-    <div class="stat-row">
-      <div class="stat"><div class="v">1</div><div class="k">runtime dependency</div></div>
-      <div class="stat"><div class="v">10</div><div class="k">built-in scorers</div></div>
-      <div class="stat"><div class="v">282</div><div class="k">tests</div></div>
-      <div class="stat"><div class="v">4</div><div class="k">example projects</div></div>
-      <div class="stat"><div class="v">$0</div><div class="k">to try it offline</div></div>
-    </div>
-  </div>
-</section>
 
 <!-- ------------------------------------------------------------- start -->
 <section class="section">
