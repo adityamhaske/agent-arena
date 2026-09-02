@@ -1,13 +1,82 @@
+# Byte-compiled / optimized / DLL files
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
+*.so
+*.dylib
+*.dll
+
+# Virtual environments
 .Python
 env/
 venv/
 .venv/
 env.bak/
 venv.bak/
+ENV/
+env[0-9]*/
+venv[0-9]*/
+
+# Secrets & environment variables — NEVER commit these
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.cert
+*.crt
+*.pfx
+*.p12
+
+# OS metadata & temporary files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Editor & IDE directories
+.vscode/
+.idea/
+.zed/
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+
+# Testing, coverage, and linter caches
+.pytest_cache/
+.coverage
+.coverage.*
+nosetests.xml
+coverage.xml
+*.cover
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+.mypy_cache/
+.ruff_cache/
+*.log
+
+# Python packaging & distribution
+*.egg-info/
+.eggs/
+dist/
+build/
+develop-eggs/
+downloads/
+eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg
 
 # DO NOT ignore trace files or the eval database.
 # These are the project's primary evidence/results, not build artifacts.
@@ -21,31 +90,16 @@ venv.bak/
 #   - eval_db.sqlite is a fixture database run_baseline.py recreates per run
 projects/*/results/
 eval_db.sqlite
-
-# The study's sweep output. Its scripts write to `results/` relative to the
-# working directory, so ignore the fixture DB under both the study root (the
-# documented place to run from) and the repo root.
 results/eval_db.sqlite
 studies/multi_agent_handoff/results/eval_db.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
 
-# pytest
-.pytest_cache/
-.coverage
-
-# Secrets — never commit these
-.env
-.env.local
-*.key
-
-# OS / editor noise
-.DS_Store
-.vscode/
-*.swp
-
-# Python packaging
-*.egg-info/
-dist/
-build/
-
-# Generated documentation site (built by site/build.py, deployed by CI).
+# Generated documentation site (built by site/build.py, deployed by CI)
 site/_build/
+
+# Temporary and scratch directories
+scratch/
+tmp/
+temp/
