@@ -33,18 +33,46 @@
 (function mobileNav() {
   var toggle = document.querySelector('[data-nav-toggle]');
   var sidebar = document.getElementById('sidebar');
+  var backdrop = document.getElementById('nav-backdrop');
   if (!toggle || !sidebar) return;
 
+  function closeNav() {
+    sidebar.classList.remove('open');
+    if (backdrop) backdrop.classList.remove('open');
+    toggle.setAttribute('aria-expanded', 'false');
+    document.body.classList.remove('nav-locked');
+  }
+
+  function openNav() {
+    sidebar.classList.add('open');
+    if (backdrop) backdrop.classList.add('open');
+    toggle.setAttribute('aria-expanded', 'true');
+    document.body.classList.add('nav-locked');
+  }
+
   toggle.addEventListener('click', function () {
-    var open = sidebar.classList.toggle('open');
-    toggle.setAttribute('aria-expanded', String(open));
+    var isOpen = sidebar.classList.contains('open');
+    if (isOpen) {
+      closeNav();
+    } else {
+      openNav();
+    }
+  });
+
+  if (backdrop) {
+    backdrop.addEventListener('click', closeNav);
+  }
+
+  window.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && sidebar.classList.contains('open')) {
+      closeNav();
+    }
   });
 
   // Following a link should close the drawer, not leave it covering the page.
   sidebar.addEventListener('click', function (event) {
     if (event.target.closest('a')) {
-      sidebar.classList.remove('open');
-      toggle.setAttribute('aria-expanded', 'false');
+      closeNav();
     }
   });
 })();
