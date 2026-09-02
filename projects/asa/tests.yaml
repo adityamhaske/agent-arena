@@ -1,0 +1,6 @@
+defaults:
+  eval_type: llm_judge
+tests:
+- id: case_1
+  input: I was charges 3 times
+  reference: 'covers methods '

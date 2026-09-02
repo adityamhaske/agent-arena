@@ -1,0 +1,65 @@
+project: asa
+description: Longer text with no single right answer, graded by a second AI against your notes
+  on what a good answer looks like.
+models:
+- key: sim_frontier
+  model: mock:frontier
+  label: Frontier-class (simulated)
+  params:
+    mode: flaky
+    accuracy: 96
+    latency_ms: 1500
+  card:
+    input_usd_per_mtok: 5
+    output_usd_per_mtok: 25
+- key: sim_balanced
+  model: mock:balanced
+  label: Mid-tier (simulated)
+  params:
+    mode: flaky
+    accuracy: 88
+    latency_ms: 620
+  card:
+    input_usd_per_mtok: 3
+    output_usd_per_mtok: 15
+- key: sim_small
+  model: mock:small
+  label: Small/fast (simulated)
+  params:
+    mode: flaky
+    accuracy: 78
+    latency_ms: 190
+  card:
+    input_usd_per_mtok: 1
+    output_usd_per_mtok: 5
+- key: mock
+  model: mock
+  label: Offline mock
+- key: local
+  model: local
+  label: Locally hosted model
+defaults:
+  system: Write clearly and stick to what the source supports.
+  max_tokens: 1000
+  temperature: 0
+run:
+  trials: 3
+  concurrency: 8
+  timeout_s: 60
+  retries: 1
+metrics:
+  weights:
+    accuracy: 0.7
+    cost: 0.2
+    latency: 0.1
+  cost:
+    budget_usd_per_1k_calls: 0.0
+scorers:
+  default: llm_judge
+output:
+  dir: results
+  formats:
+  - markdown
+  - json
+constraints:
+  min_accuracy: 0.9
