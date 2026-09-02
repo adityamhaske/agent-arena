@@ -22,39 +22,14 @@ description: >
   small model is good enough to avoid sending customer data off the box at all.
 
 models:
-  # --- served by demo/fake_local_server.py -------------------------------
-  - key: local_large
-    model: demo-large
-    label: "Local large"
-    api_base: http://localhost:11434/v1
+  # Real Ollama models running locally
+  - key: llama32
+    model: llama3.2
+    label: "Llama 3.2 (Ollama)"
 
-  - key: local_medium
-    model: demo-medium
-    label: "Local medium"
-    api_base: http://localhost:11434/v1
-
-  - key: local_small
-    model: demo-small
-    label: "Local small"
-    api_base: http://localhost:11434/v1
-
-  # --- real Ollama models: uncomment after `ollama pull` -----------------
-  # Provider is inferred from the name — no `provider:` line needed, and no
-  # Python SDK to install. Unreachable or un-pulled models are skipped with a
-  # reason rather than failing every test case.
-  #
-  # - key: llama32
-  #   model: llama3.2
-  # - key: qwen25
-  #   model: qwen2.5:7b
-  # - key: phi4
-  #   model: phi4-mini
-
-  # A hosted model for comparison. Skipped automatically unless
-  # ANTHROPIC_API_KEY is set, so this file runs either way.
-  - key: haiku
-    model: claude-haiku-4-5
-    label: "Claude Haiku 4.5 (hosted, for contrast)"
+  - key: qwen25
+    model: qwen2.5:7b
+    label: "Qwen 2.5 7B (Ollama)"
 
 defaults:
   system: >
