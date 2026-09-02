@@ -46,3 +46,6 @@ studies/multi_agent_handoff/results/eval_db.sqlite
 *.egg-info/
 dist/
 build/
+
+# Generated documentation site (built by site/build.py, deployed by CI).
+site/_build/

@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>{{page_title}}</title>
+<meta name="description" content="{{description}}">
+<link rel="canonical" href="https://adityamhaske.github.io{{canonical}}">
+<meta property="og:title" content="{{page_title}}">
+<meta property="og:description" content="{{description}}">
+<meta property="og:type" content="website">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- Non-blocking: the page renders immediately in the system fallback stack and
+     upgrades to Inter/JetBrains Mono if and when Google Fonts answers. A slow or
+     blocked CDN costs nothing but the typeface. -->
+<link rel="stylesheet" media="print" onload="this.media='all'"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<noscript><link rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"></noscript>
+<link rel="stylesheet" href="{{base}}/assets/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='4' y='4' width='24' height='24' fill='none' stroke='%232f52c8' stroke-width='3'/><rect x='19' y='9' width='5' height='5' fill='%232f52c8'/></svg>">
+<script>
+  try {
+    var t = localStorage.getItem('aa-theme');
+    if (t) document.documentElement.setAttribute('data-theme', t);
+  } catch (e) {}
+</script>
+</head>
+<body>
+
+<a class="skip-link" href="#content">Skip to content</a>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="{{base}}/"><span class="brand-mark" aria-hidden="true"></span>{{site_title}}</a>
+    <nav class="top-links">
+      <a href="#why">Why this</a>
+      <a href="{{base}}/guide/">Guide</a>
+      <a href="{{base}}/study/">Study</a>
+      <a href="{{base}}/roadmap/">Roadmap</a>
+      <a href="{{repo}}">GitHub</a>
+    </nav>
+    <button class="icon-btn" type="button" data-theme-toggle aria-label="Switch colour theme" title="Switch colour theme">◐</button>
+  </div>
+</header>
+
+<main id="content">
+
+<!-- ------------------------------------------------------------- hero -->
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <div class="tagline">Model &amp; architecture evaluation</div>
+      <h1>Pick the model your project<br class="wide-break"> should actually ship.</h1>
+      <p class="lede">
+        Public benchmarks rank models on someone else's task. Agent Arena ranks them on
+        <strong>yours</strong> — your test cases, your accuracy floor, your budget, your
+        latency ceiling — and refuses to recommend anything you could not ship.
+      </p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="{{base}}/guide/">Read the guide</a>
+        <a class="btn" href="{{repo}}">View on GitHub</a>
+      </div>
+      <div class="install">
+        <span class="term-prompt">$</span>
+        <code id="install-cmd">pip install agent-arena &amp;&amp; arena ui</code>
+        <button class="copy" type="button" data-copy="#install-cmd">Copy</button>
+      </div>
+    </div>
+
+    <div class="term" role="img" aria-label="Leaderboard output: the small model wins on composite score despite lower accuracy, and the tiny model is disqualified for falling below the 70 percent accuracy floor.">
+      <div class="term-bar">
+        <span class="term-dot"></span><span class="term-dot"></span><span class="term-dot"></span>
+        <span>arena evaluate --project projects/support_triage</span>
+      </div>
+      <div class="term-body">
+        <table>
+          <tr class="hdr"><td>#</td><td>model</td><td>composite</td><td>accuracy</td><td>cost</td><td>latency</td><td>status</td></tr>
+          <tr class="win"><td>1</td><td>sim_small</td><td>0.853</td><td>83.3%</td><td>$0.06</td><td>190ms</td><td class="tag-ok">ranked</td></tr>
+          <tr><td>2</td><td>sim_frontier</td><td>0.750</td><td>97.6%</td><td>$0.30</td><td>1,500ms</td><td class="tag-ok">ranked</td></tr>
+          <tr><td>3</td><td>sim_balanced</td><td>0.744</td><td>85.7%</td><td>$0.18</td><td>620ms</td><td class="tag-ok">ranked</td></tr>
+          <tr class="out"><td>—</td><td>sim_tiny</td><td>—</td><td>50.0%</td><td>$0.02</td><td>90ms</td><td class="tag-dq">DISQUALIFIED</td></tr>
+        </table>
+        <div class="term-note">
+          The winner is <strong>not</strong> the most accurate model. At this volume, with these
+          weights, the small one wins — and the cheapest is ruled out entirely for missing the
+          accuracy floor. That trade is the whole point.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- -------------------------------------------------------------- why -->
+<section class="section" id="why">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="kicker">Why this</div>
+      <h2>What this does that a benchmark leaderboard does not</h2>
+      <p>
+        MMLU and public arenas tell you how a model does on tasks you did not choose,
+        averaged over criteria you did not set. That is close to useless for a shipping
+        decision, because your accuracy floor, latency budget and price ceiling are yours.
+      </p>
+    </div>
+
+    <div class="cards">
+      <div class="card">
+        <div class="num">01</div>
+        <h3>You define what “best” means</h3>
+        <p>
+          Weight accuracy, cost and latency however your product actually works. A chatbot
+          people wait on and an overnight batch job are different questions, and they get
+          different answers from the same data.
+        </p>
+      </div>
+      <div class="card">
+        <div class="num">02</div>
+        <h3>Unusable models are disqualified, not ranked</h3>
+        <p>
+          Set a hard floor and a model that misses it comes back <span class="pill bad">DISQUALIFIED</span>
+          with the reason printed. A leaderboard that quietly ranks an unshippable model
+          fourth is lying to you.
+        </p>
+      </div>
+      <div class="card">
+        <div class="num">03</div>
+        <h3>It admits when it cannot tell</h3>
+        <p>
+          When the top two are within 0.02 the report says the sweep cannot separate them
+          and asks for more cases — instead of implying a twelve-case run settled it.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ---------------------------------------------------------- systems -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="kicker">Two systems, one repository</div>
+      <h2>Every claim about an LLM system is about one of two variables</h2>
+      <p>
+        When a multi-agent pipeline fails, was it the <em>model</em> being dumb or the
+        <em>architecture</em> dropping data on the floor? You cannot answer that by varying
+        both at once. So each half pins one and moves the other.
+      </p>
+    </div>
+
+    <div class="split-2">
+      <a class="panel card" href="{{base}}/guide/">
+        <h3>Universal Arena <span class="pill accent">varies the model</span></h3>
+        <p>
+          A project is a folder: <code>config.yaml</code> + <code>tests.yaml</code>. Ten built-in
+          scorers, hard constraints, a weighted composite, and every run stored in SQLite so you
+          can track regressions across releases. Runs offline against simulated models before you
+          spend anything.
+        </p>
+        <span class="more">Read the guide →</span>
+      </a>
+
+      <a class="panel card" href="{{base}}/study/">
+        <h3>Handoff study <span class="pill">varies the architecture</span></h3>
+        <p>
+          A frozen 28-run experiment holding the model fixed and swapping the coordination
+          pattern. It emits a replayable trace and grades every run into a failure category, so
+          a coordination failure can be told apart from a capability failure.
+        </p>
+        <span class="more">Read the study →</span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ---------------------------------------------------------- finding -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="kicker">The finding</div>
+      <h2>Splitting a task across agents loses information at the handoff</h2>
+      <p>
+        Same model throughout. The only variable was the wiring. One fact — is this account on
+        credit hold? — is seen by the first stage and needed by the last.
+      </p>
+    </div>
+
+    <div class="split-2">
+      <div class="panel">
+        <div class="term-body" style="padding:0">
+          <table>
+            <tr class="hdr"><td>architecture</td><td>accuracy</td><td>status</td></tr>
+            <tr class="win"><td>single_agent</td><td>100.0%</td><td class="tag-ok">ranked</td></tr>
+            <tr class="out"><td>peer_to_peer</td><td>27.3%</td><td class="tag-dq">DISQUALIFIED</td></tr>
+            <tr class="out"><td>supervisor_worker</td><td>63.6%</td><td class="tag-dq">DISQUALIFIED</td></tr>
+          </table>
+        </div>
+        <p style="margin-top:1rem;color:var(--ink-2);font-size:.92rem">
+          From <code>projects/pipeline_demo</code> — three architectures, one task, fully offline.
+        </p>
+      </div>
+
+      <div>
+        <ul class="feature-list">
+          <li>
+            <span class="mark">▸</span>
+            <span><b>A rigid handoff loses it every time.</b>
+            The fixed-format string has no field for the flag, so the deciding stage never sees
+            it. No better model fixes that — the data is gone before the model is asked anything.</span>
+          </li>
+          <li>
+            <span class="mark">▸</span>
+            <span><b>A free-text summary loses it sometimes.</b>
+            The fact survives when it is prominent and vanishes when it is buried late in a long
+            input. Intermittent is the worse bug: it reads like a prompt problem for weeks.</span>
+          </li>
+          <li>
+            <span class="mark">▸</span>
+            <span><b>More agents cost more.</b>
+            Each extra hop is real money and real latency, and the leaderboard prices it — so
+            “add a critic agent” becomes a decision with a number attached.</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- --------------------------------------------------------------- ui -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="kicker">Not just for developers</div>
+      <h2>The people who set the budget do not write YAML</h2>
+      <p>
+        <code>arena ui</code> serves the same engine from a browser: a wizard that asks what job
+        the AI is doing in plain language, and results written as sentences instead of scores.
+      </p>
+    </div>
+
+    <div class="split-2">
+      <div class="panel">
+        <blockquote style="margin:0">
+          <p><strong>Use Small/fast (simulated).</strong> It gets 83 out of 100 right, costs 6¢ per
+          1,000 uses, and replies in 190 milliseconds (instant).</p>
+          <p style="margin-bottom:0"><em>Small/fast is not the most accurate — Frontier-class gets
+          about 14 more answers right in every 100 — but it is 4.9× cheaper and 7.9× faster.</em></p>
+        </blockquote>
+        <p style="margin:1rem 0 0;color:var(--ink-2);font-size:.92rem">
+          Disqualifications come with the reason <em>and</em> the remedy, so a non-technical reader
+          knows whether to change the model or change the requirement.
+        </p>
+      </div>
+
+      <div>
+        <ul class="feature-list">
+          <li><span class="mark">▸</span><span><b>A wizard instead of a config file.</b>
+            Pick the job from seven plain descriptions; the right scorer, prompt and starting
+            weights are chosen for you. The output is an ordinary project folder the CLI can run.</span></li>
+          <li><span class="mark">▸</span><span><b>What-if sliders.</b>
+            Change what you care about and the ranking is rebuilt from answers already collected —
+            no new model calls, no new spend.</span></li>
+          <li><span class="mark">▸</span><span><b>Stdlib only.</b>
+            No Flask, no npm, no CDN. It works on a locked-down laptop with no internet.</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ------------------------------------------------------------ numbers -->
+<section class="section">
+  <div class="wrap">
+    <div class="stat-row">
+      <div class="stat"><div class="v">1</div><div class="k">runtime dependency</div></div>
+      <div class="stat"><div class="v">10</div><div class="k">built-in scorers</div></div>
+      <div class="stat"><div class="v">282</div><div class="k">tests</div></div>
+      <div class="stat"><div class="v">4</div><div class="k">example projects</div></div>
+      <div class="stat"><div class="v">$0</div><div class="k">to try it offline</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ------------------------------------------------------------- start -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="kicker">Getting started</div>
+      <h2>A real leaderboard in about a minute, with no API key</h2>
+      <p>Both example projects run offline against deterministic simulated models.</p>
+    </div>
+
+    <div class="split-2">
+      <div>
+        <div class="code-wrap">
+<pre><code class="language-bash">pip install -e .
+
+# see a real leaderboard immediately — no key needed
+arena evaluate --project projects/support_triage
+
+# compare multi-agent architectures instead of models
+arena evaluate --project projects/pipeline_demo
+
+# or drive the whole thing from a browser
+arena ui</code></pre>
+        </div>
+      </div>
+
+      <div>
+        <h3>Then your own project</h3>
+        <div class="code-wrap">
+<pre><code class="language-bash">arena init projects/my_project
+arena validate  --project projects/my_project
+arena evaluate  --project projects/my_project --dry-run
+arena evaluate  --project projects/my_project</code></pre>
+        </div>
+        <p style="color:var(--ink-2);font-size:.94rem">
+          Two files decide everything: <code>config.yaml</code> holds the models, weights and hard
+          constraints; <code>tests.yaml</code> holds your cases. There is no second code path and
+          no plugin to write.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- -------------------------------------------------------------- docs -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="kicker">Documentation</div>
+      <h2>Read the details</h2>
+    </div>
+    <div class="cards">
+      <a class="card" href="{{base}}/guide/">
+        <h3>Universal Arena guide</h3>
+        <p>Projects, scorers, metrics, hard constraints, pipeline targets and the browser UI.</p>
+        <span class="more">Open →</span>
+      </a>
+      <a class="card" href="{{base}}/study/">
+        <h3>Multi-agent handoff study</h3>
+        <p>The experiment, the four architectures and the committed 28-run sweep.</p>
+        <span class="more">Open →</span>
+      </a>
+      <a class="card" href="{{base}}/demo/">
+        <h3>Demo walkthrough</h3>
+        <p>End-to-end against models running on your own machine, with real output.</p>
+        <span class="more">Open →</span>
+      </a>
+      <a class="card" href="{{base}}/example-report/">
+        <h3>Sample report</h3>
+        <p>Exactly what a finished run writes to disk.</p>
+        <span class="more">Open →</span>
+      </a>
+      <a class="card" href="{{base}}/roadmap/">
+        <h3>Roadmap</h3>
+        <p>What ships next — and what this deliberately will not become.</p>
+        <span class="more">Open →</span>
+      </a>
+      <a class="card" href="{{base}}/decisions/">
+        <h3>Decisions (ADRs)</h3>
+        <p>Why the trace format, retry strategy and config-driven design are what they are.</p>
+        <span class="more">Open →</span>
+      </a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <span>Agent Arena — MIT licensed.</span>
+    <a href="{{repo}}">Source</a>
+    <a href="{{base}}/guide/">Docs</a>
+    <a href="https://adityamhaske.github.io/">More projects</a>
+    <span class="spacer"></span>
+    <span>Built by <a href="https://github.com/adityamhaske">Aditya Mhaske</a></span>
+  </div>
+</footer>
+
+<script src="{{base}}/assets/site.js" defer></script>
+</body>
+</html>

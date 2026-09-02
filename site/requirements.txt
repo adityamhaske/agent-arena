@@ -1,0 +1,4 @@
+# Build-time only. Nothing here is imported by the agent_arena package, so
+# `pip install agent-arena` is unaffected by this file.
+Markdown>=3.5
+Pygments>=2.17

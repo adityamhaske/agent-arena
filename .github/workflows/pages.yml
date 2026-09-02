@@ -1,0 +1,83 @@
+name: Docs site
+
+on:
+  push:
+    branches: [main]
+    # The site is rendered from the repo's own markdown, so a doc edit has to
+    # redeploy it. Anything that changes what a page says belongs here.
+    paths:
+      - "site/**"
+      - "docs/**"
+      - "README.md"
+      - "demo.md"
+      - "studies/multi_agent_handoff/README.md"
+      - "studies/multi_agent_handoff/docs/**"
+      - "studies/multi_agent_handoff/results/**/report.md"
+      - ".github/workflows/pages.yml"
+  pull_request:
+    paths:
+      - "site/**"
+      - "docs/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # `enablement: true` turns Pages on for the repo the first time this runs,
+      # so nobody has to visit Settings before the first deploy works.
+      - uses: actions/configure-pages@v5
+        if: github.event_name != 'pull_request'
+        with:
+          enablement: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install build dependencies
+        run: pip install -r site/requirements.txt
+
+      - name: Build
+        # Project pages are served from /<repo>/, so every internal link needs
+        # that prefix. Deriving it from the repo name keeps a fork working.
+        run: SITE_BASE="/${GITHUB_REPOSITORY#*/}" python site/build.py
+
+      - name: Check for broken internal links
+        run: python site/check_links.py
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/_build
+
+  deploy:
+    name: deploy
+    # A pull request gets the build and the link check, but must never publish.
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

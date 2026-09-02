@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>{{page_title}}</title>
+<meta name="description" content="{{description}}">
+<link rel="canonical" href="https://adityamhaske.github.io{{canonical}}">
+<meta property="og:title" content="{{page_title}}">
+<meta property="og:description" content="{{description}}">
+<meta property="og:type" content="article">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- Non-blocking: the page renders immediately in the system fallback stack and
+     upgrades to Inter/JetBrains Mono if and when Google Fonts answers. A slow or
+     blocked CDN costs nothing but the typeface. -->
+<link rel="stylesheet" media="print" onload="this.media='all'"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<noscript><link rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"></noscript>
+<link rel="stylesheet" href="{{base}}/assets/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='4' y='4' width='24' height='24' fill='none' stroke='%232f52c8' stroke-width='3'/><rect x='19' y='9' width='5' height='5' fill='%232f52c8'/></svg>">
+<script>
+  // Applied before first paint so a chosen theme never flashes the other one.
+  try {
+    var t = localStorage.getItem('aa-theme');
+    if (t) document.documentElement.setAttribute('data-theme', t);
+  } catch (e) {}
+</script>
+</head>
+<body>
+
+<a class="skip-link" href="#content">Skip to content</a>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="{{base}}/"><span class="brand-mark" aria-hidden="true"></span>{{site_title}}</a>
+    <nav class="top-links">
+      <a href="{{base}}/guide/">Guide</a>
+      <a href="{{base}}/study/">Study</a>
+      <a href="{{base}}/roadmap/">Roadmap</a>
+      <a href="https://github.com/adityamhaske/agent-arena">GitHub</a>
+    </nav>
+    <button class="icon-btn nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-label="Toggle navigation">☰</button>
+    <button class="icon-btn" type="button" data-theme-toggle aria-label="Switch colour theme" title="Switch colour theme">◐</button>
+  </div>
+</header>
+
+<div class="shell">
+  <aside class="sidebar" id="sidebar" aria-label="Documentation">
+    {{nav}}
+  </aside>
+
+  <main class="doc" id="content">
+    <div class="doc-head">
+      <div class="eyebrow">Documentation</div>
+      <h1>{{title}}</h1>
+      <p>{{blurb}}</p>
+    </div>
+
+    <div class="md">
+      {{content}}
+    </div>
+
+    <div class="doc-foot">
+      <p class="edit-link">Rendered from <a href="{{source_url}}"><code>{{source}}</code></a> in the repository.</p>
+      {{pager}}
+    </div>
+  </main>
+
+  <aside class="toc-col {{toc_class}}" aria-label="On this page">
+    <h4>On this page</h4>
+    {{toc}}
+  </aside>
+</div>
+
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <span>Agent Arena — MIT licensed.</span>
+    <a href="https://github.com/adityamhaske/agent-arena">Source</a>
+    <a href="https://adityamhaske.github.io/">More projects</a>
+  </div>
+</footer>
+
+<script src="{{base}}/assets/site.js" defer></script>
+</body>
+</html>
