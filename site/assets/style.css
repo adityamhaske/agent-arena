@@ -196,7 +196,19 @@ li > ul, li > ol { margin-top: .35em; margin-bottom: .35em; }
 
 /* ---------------------------------------------------------------- tables */
 
-.md table, .data-table {
+/* A wide table scrolls inside itself rather than needing a JS-inserted
+   wrapper. Containment must not depend on JavaScript: if site.js fails to load,
+   a phone would otherwise get a sideways-scrolling page. */
+.md table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 0 0 1.4rem;
+  font-size: .93rem;
+}
+.data-table {
   width: 100%;
   border-collapse: collapse;
   margin: 0 0 1.4rem;
@@ -286,6 +298,15 @@ li > ul, li > ol { margin-top: .35em; margin-bottom: .35em; }
 
 .doc { min-width: 0; }
 .doc-head { border-bottom: 1px solid var(--line); padding-bottom: 1.1rem; margin-bottom: 1.8rem; }
+.crumbs {
+  font-family: var(--mono); font-size: .74rem; letter-spacing: .04em;
+  color: var(--ink-3); margin-bottom: .55rem;
+  display: flex; flex-wrap: wrap; align-items: center; gap: .4rem;
+}
+.crumbs a { color: var(--ink-3); }
+.crumbs a:hover { color: var(--accent); text-decoration: none; }
+.crumbs .sep { opacity: .55; }
+.crumbs [aria-current] { color: var(--ink-2); }
 .eyebrow {
   font-family: var(--mono); font-size: .72rem; text-transform: uppercase;
   letter-spacing: .12em; color: var(--ink-3); margin-bottom: .5rem;

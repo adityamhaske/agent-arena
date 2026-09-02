@@ -49,6 +49,9 @@
   });
 })();
 
+/* Wide tables and code blocks are contained by CSS alone (see style.css), so
+   nothing below is required for the page to lay out correctly. */
+
 /* ------------------------------------------------- copy to clipboard */
 
 (function copyButtons() {
@@ -102,19 +105,6 @@
     button.setAttribute('aria-label', 'Copy code to clipboard');
     button.addEventListener('click', function () { copy(pre.innerText, button); });
     wrap.appendChild(button);
-  });
-})();
-
-/* ----------------------------------------------------- wide tables */
-
-(function scrollableTables() {
-  // Markdown tables can be wider than the column; let them scroll rather than
-  // pushing the whole page sideways.
-  document.querySelectorAll('.md > table').forEach(function (table) {
-    var wrap = document.createElement('div');
-    wrap.className = 'table-scroll';
-    table.parentNode.insertBefore(wrap, table);
-    wrap.appendChild(table);
   });
 })();
 
