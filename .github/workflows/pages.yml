@@ -40,13 +40,20 @@ jobs:
       contents: read
       pages: write
       id-token: write
+    outputs:
+      pages_ready: ${{ steps.pages.outcome == 'success' }}
     steps:
       - uses: actions/checkout@v4
 
-      # `enablement: true` turns Pages on for the repo the first time this runs,
-      # so nobody has to visit Settings before the first deploy works.
+      # Tries to turn Pages on so nobody has to visit Settings first. The
+      # default token often lacks permission to create a Pages site ("Resource
+      # not accessible by integration"), and that is not a reason to fail the
+      # build: the docs still compile and the link check still protects the
+      # push. Deployment is gated on this succeeding instead.
       - uses: actions/configure-pages@v5
+        id: pages
         if: github.event_name != 'pull_request'
+        continue-on-error: true
         with:
           enablement: true
 
@@ -71,7 +78,13 @@ jobs:
   deploy:
     name: deploy
     # A pull request gets the build and the link check, but must never publish.
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    # `pages_ready` is false until someone enables Pages once under
+    # Settings → Pages → Source: GitHub Actions; until then this is skipped
+    # rather than failed, so a red X never hides a healthy docs build.
+    if: |
+      github.ref == 'refs/heads/main'
+      && github.event_name != 'pull_request'
+      && needs.build.outputs.pages_ready == 'true'
     needs: build
     runs-on: ubuntu-latest
     permissions:
