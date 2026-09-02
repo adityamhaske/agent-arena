@@ -1,5 +1,7 @@
 # Agent Arena
 
+**[adityamhaske.github.io/agent-arena](https://adityamhaske.github.io/agent-arena)** — documentation site
+
 Two independent evaluation systems that share a philosophy — **structured
 evidence over vibes** — and answer opposite questions about LLM systems.
 
@@ -403,6 +405,15 @@ docs/adr/                       ADRs 0001–0011, one sequence spanning both sys
 ```
 
 ## Documentation
+
+Everything below is also published as a website —
+**[adityamhaske.github.io/agent-arena](https://adityamhaske.github.io/agent-arena)** — built
+from these same files, so the two cannot drift apart. To work on it locally:
+
+```bash
+pip install -r site/requirements.txt
+python site/build.py && python -m http.server -d site/_build 8000
+```
 
 - **[Universal Arena guide](docs/UNIVERSAL_ARENA.md)** — full reference for the arena
 - **[Demo](demo.md)** — end-to-end walkthrough with local models and real output
