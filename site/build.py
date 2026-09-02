@@ -14,11 +14,15 @@ is imported by the package, so `pip install agent-arena` is unaffected.
 
 from __future__ import annotations
 
+import html as html_lib
+import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
 try:
@@ -43,6 +47,16 @@ BLOB = f"{REPO}/blob/main"
 SITE_TITLE = "Agent Arena"
 SITE_TAGLINE = "Pick the model — or the pipeline — your project should actually ship."
 
+#: Absolute origin, needed by canonical URLs, Open Graph and the sitemap —
+#: crawlers resolve those against the origin, not the page.
+ORIGIN = "https://adityamhaske.github.io"
+
+#: GitHub renders a social card for every repository. Using it means link
+#: previews work without committing a binary we would then have to maintain.
+SOCIAL_IMAGE = "https://opengraph.githubassets.com/1/adityamhaske/agent-arena"
+
+AUTHOR = "Aditya Mhaske"
+
 
 @dataclass
 class Page:
@@ -56,6 +70,10 @@ class Page:
     hide_toc: bool = False
     html: str = ""
     toc: str = ""
+    heading: str = ""
+    """The document's own H1, used as the page heading so there is exactly one."""
+    description: str = ""
+    lastmod: str = ""
     headings: list = field(default_factory=list)
 
     @property
@@ -65,6 +83,10 @@ class Page:
     @property
     def href(self) -> str:
         return f"{BASE}/" if self.url == "/" else f"{BASE}{self.url}"
+
+    @property
+    def absolute(self) -> str:
+        return f"{ORIGIN}{self.href}"
 
 
 # The whole site, in reading order. Adding a doc is one line here.
@@ -94,6 +116,8 @@ PAGES: list[Page] = [
          "studies/multi_agent_handoff/results/sweep_20260627/report.md", "Multi-agent study",
          "The committed 28-run sweep the finding rests on."),
 
+    Page("/releases/", "Releases", "CHANGELOG.md", "Project",
+         "What shipped in each version, and which interfaces are covered by semver."),
     Page("/roadmap/", "Roadmap", "docs/ROADMAP_10X.md", "Project",
          "Where this goes next — and what it deliberately will not become."),
     Page("/decisions/", "Decisions (ADRs)", "docs/DECISIONS.md", "Project",
@@ -153,6 +177,73 @@ INLINE_TOC = re.compile(
 
 def drop_inline_contents(html: str) -> str:
     return INLINE_TOC.sub("", html)
+
+
+#: A rendered doc opens with its own `# Title`, and the page shell adds one too.
+#: Two H1s is a real defect — it duplicates the headline and leaves crawlers with
+#: an ambiguous document outline. The document's own title wins; the shell's
+#: curated title stays as <title> and the nav label.
+LEADING_H1 = re.compile(r'<h1[^>]*>(.*?)</h1>\s*', re.DOTALL | re.IGNORECASE)
+FIRST_PARAGRAPH = re.compile(r'<p>(.*?)</p>', re.DOTALL)
+TAGS = re.compile(r'<[^>]+>')
+
+
+def take_heading(html: str) -> tuple[str, str]:
+    """Pull the document's own H1 out of the body and return both.
+
+    Searched rather than anchored: a doc may open with a lead-in line before its
+    title (EXAMPLE_REPORT.md does), and that H1 is still the document's title.
+    A well-formed document has at most one, so taking the first is safe.
+    """
+    match = LEADING_H1.search(html)
+    if not match:
+        return "", html
+    heading = strip_tags(match.group(1))
+    return heading, html[: match.start()] + html[match.end():]
+
+
+def strip_tags(fragment: str) -> str:
+    return " ".join(html_lib.unescape(TAGS.sub(" ", fragment)).split())
+
+
+#: ADRs open with a `Date: … Status: …` block. That is metadata, not a summary,
+#: and it makes a useless search snippet — skip past it to the real prose.
+METADATA_LEAD = re.compile(r"^(date|status|updated|author|supersedes|deciders)\b", re.I)
+
+
+def summarise(html: str, limit: int = 155) -> str:
+    """A meta description taken from the page's own opening prose.
+
+    Better than no description at all — which is what every ADR had — and better
+    than a generic one, because a search result then describes the actual page.
+    """
+    for candidate in FIRST_PARAGRAPH.findall(html):
+        text = strip_tags(candidate)
+        if len(text) < 40:
+            continue  # a one-line lead-in is not a summary
+        if METADATA_LEAD.match(text):
+            continue
+        if len(text) <= limit:
+            return text
+        cut = text[:limit].rsplit(" ", 1)[0]
+        return cut.rstrip(",;:—-") + "…"
+    return ""
+
+
+def git_lastmod(relative: str) -> str:
+    """When this page's source last changed, for the sitemap.
+
+    A sitemap without `lastmod` gives a crawler no reason to re-read a page it
+    has already seen; taking it from git means it is always true.
+    """
+    try:
+        stamp = subprocess.run(
+            ["git", "log", "-1", "--format=%cI", "--", relative],
+            cwd=ROOT, capture_output=True, text=True, timeout=15,
+        ).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        stamp = ""
+    return stamp[:10] if stamp else datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
 def rewrite_links(html: str, source: str) -> str:
@@ -246,6 +337,96 @@ def build_footer_links(current: Page) -> str:
     return f'<nav class="pager-row">{left}{right}</nav>'
 
 
+def breadcrumb_trail(page: Page) -> list[tuple[str, str]]:
+    """Home → section → page. Gives crawlers a hierarchy and readers a way up."""
+    trail = [(SITE_TITLE, f"{BASE}/")]
+    if page.nav == "Decisions" and page.url != "/decisions/":
+        trail.append(("Decisions", f"{BASE}/decisions/"))
+    elif page.nav == "Multi-agent study" and page.url != "/study/":
+        trail.append(("Multi-agent study", f"{BASE}/study/"))
+    trail.append((page.title, page.href))
+    return trail
+
+
+def breadcrumb_html(page: Page) -> str:
+    parts = []
+    for index, (label, href) in enumerate(breadcrumb_trail(page)):
+        last = index == len(breadcrumb_trail(page)) - 1
+        if last:
+            parts.append(f'<span aria-current="page">{html_lib.escape(label)}</span>')
+        else:
+            parts.append(f'<a href="{href}">{html_lib.escape(label)}</a>')
+    return (
+        '<nav class="crumbs" aria-label="Breadcrumb">'
+        + '<span class="sep" aria-hidden="true">/</span>'.join(parts)
+        + "</nav>"
+    )
+
+
+def json_ld(page: Page) -> str:
+    """Structured data, so a crawler is told what the page is rather than guessing."""
+    graph: list[dict] = [
+        {
+            "@type": "WebSite",
+            "@id": f"{ORIGIN}{BASE}/#website",
+            "url": f"{ORIGIN}{BASE}/",
+            "name": SITE_TITLE,
+            "description": SITE_TAGLINE,
+            "inLanguage": "en",
+            "author": {"@type": "Person", "name": AUTHOR},
+        }
+    ]
+
+    if page.source:
+        graph.append(
+            {
+                "@type": "TechArticle",
+                "@id": f"{page.absolute}#article",
+                "headline": page.heading or page.title,
+                "name": page.title,
+                "description": page.description,
+                "url": page.absolute,
+                "dateModified": page.lastmod,
+                "inLanguage": "en",
+                "isPartOf": {"@id": f"{ORIGIN}{BASE}/#website"},
+                "author": {"@type": "Person", "name": AUTHOR},
+                "image": SOCIAL_IMAGE,
+            }
+        )
+        graph.append(
+            {
+                "@type": "BreadcrumbList",
+                "@id": f"{page.absolute}#breadcrumbs",
+                "itemListElement": [
+                    {
+                        "@type": "ListItem",
+                        "position": index + 1,
+                        "name": label,
+                        "item": f"{ORIGIN}{href}",
+                    }
+                    for index, (label, href) in enumerate(breadcrumb_trail(page))
+                ],
+            }
+        )
+    else:
+        graph.append(
+            {
+                "@type": "SoftwareSourceCode",
+                "@id": f"{ORIGIN}{BASE}/#software",
+                "name": SITE_TITLE,
+                "description": SITE_TAGLINE,
+                "url": f"{ORIGIN}{BASE}/",
+                "codeRepository": REPO,
+                "programmingLanguage": "Python",
+                "license": "https://opensource.org/licenses/MIT",
+                "author": {"@type": "Person", "name": AUTHOR},
+            }
+        )
+
+    payload = {"@context": "https://schema.org", "@graph": graph}
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+
+
 # ---------------------------------------------------------------------------
 # build
 # ---------------------------------------------------------------------------
@@ -269,9 +450,11 @@ def build() -> int:
             continue
         converter = make_converter()
         html = converter.convert(source_path.read_text(encoding="utf-8"))
-        page.html = external_targets(
-            drop_inline_contents(rewrite_links(html, page.source))
-        )
+        html = external_targets(drop_inline_contents(rewrite_links(html, page.source)))
+        # Exactly one H1 per page: the document's own, promoted into the shell.
+        page.heading, page.html = take_heading(html)
+        page.description = page.blurb or summarise(page.html)
+        page.lastmod = git_lastmod(page.source)
         page.toc = getattr(converter, "toc", "")
 
     written = 0
@@ -279,7 +462,7 @@ def build() -> int:
         if page.source:
             body = render(
                 page_template,
-                title=page.title,
+                title=page.heading or page.title,
                 blurb=page.blurb,
                 content=page.html,
                 toc=page.toc if page.toc.strip() else "",
@@ -291,8 +474,14 @@ def build() -> int:
                 base=BASE,
                 site_title=SITE_TITLE,
                 page_title=f"{page.title} · {SITE_TITLE}",
-                description=page.blurb or SITE_TAGLINE,
-                canonical=page.href,
+                description=html_lib.escape(page.description or SITE_TAGLINE, quote=True),
+                canonical=page.absolute,
+                origin=ORIGIN,
+                image=SOCIAL_IMAGE,
+                crumbs=breadcrumb_html(page),
+                jsonld=json_ld(page),
+                lastmod=page.lastmod,
+                robots="index,follow,max-image-preview:large,max-snippet:-1",
             )
         else:
             body = render(
@@ -300,9 +489,12 @@ def build() -> int:
                 base=BASE,
                 site_title=SITE_TITLE,
                 page_title=f"{SITE_TITLE} — {SITE_TAGLINE}",
-                description=SITE_TAGLINE,
+                description=html_lib.escape(SITE_TAGLINE, quote=True),
                 repo=REPO,
-                canonical=page.href,
+                canonical=page.absolute,
+                origin=ORIGIN,
+                image=SOCIAL_IMAGE,
+                jsonld=json_ld(page),
             )
 
         page.out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -325,7 +517,6 @@ def write_extras() -> None:
         title="Page not found",
         blurb="",
         content=(
-            "<h1>Page not found</h1>"
             "<p>That page does not exist on this site. It may have moved, or it "
             "may only exist in the repository.</p>"
             f'<p><a href="{BASE}/">Back to the front page</a> · '
@@ -340,23 +531,56 @@ def write_extras() -> None:
         base=BASE,
         site_title=SITE_TITLE,
         page_title=f"Not found · {SITE_TITLE}",
-        description="Page not found",
+        description="This page does not exist on the Agent Arena documentation site.",
         canonical="",
+        origin=ORIGIN,
+        image=SOCIAL_IMAGE,
+        crumbs="",
+        # A 404 must never be indexed, or it competes with the real pages.
+        jsonld="",
+        lastmod="",
+        robots="noindex,follow",
     )
     (OUT / "404.html").write_text(not_found, encoding="utf-8")
 
-    origin = "https://adityamhaske.github.io"
-    urls = "\n".join(
-        f"  <url><loc>{origin}{page.href}</loc></url>" for page in PAGES
-    )
+    # A sitemap without lastmod gives a crawler no reason to revisit; without
+    # priority it cannot tell the landing page from an ADR. Both are cheap.
+    entries = []
+    for page in PAGES:
+        if page.url == "/":
+            priority, changefreq = "1.0", "weekly"
+        elif page.nav == "Decisions":
+            priority, changefreq = "0.4", "yearly"
+        elif page.url in ("/guide/", "/study/"):
+            priority, changefreq = "0.9", "monthly"
+        elif page.url == "/releases/":
+            priority, changefreq = "0.8", "weekly"
+        else:
+            priority, changefreq = "0.6", "monthly"
+        lastmod = page.lastmod or git_lastmod("site")
+        entries.append(
+            "  <url>\n"
+            f"    <loc>{page.absolute}</loc>\n"
+            f"    <lastmod>{lastmod}</lastmod>\n"
+            f"    <changefreq>{changefreq}</changefreq>\n"
+            f"    <priority>{priority}</priority>\n"
+            "  </url>"
+        )
     (OUT / "sitemap.xml").write_text(
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-        f"{urls}\n</urlset>\n",
+        + "\n".join(entries)
+        + "\n</urlset>\n",
         encoding="utf-8",
     )
+
     (OUT / "robots.txt").write_text(
-        f"User-agent: *\nAllow: /\nSitemap: {origin}{BASE}/sitemap.xml\n", encoding="utf-8"
+        "# Agent Arena documentation — everything here is public and crawlable.\n"
+        "User-agent: *\n"
+        "Allow: /\n"
+        "\n"
+        f"Sitemap: {ORIGIN}{BASE}/sitemap.xml\n",
+        encoding="utf-8",
     )
 
 

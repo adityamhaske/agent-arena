@@ -419,5 +419,6 @@ python site/build.py && python -m http.server -d site/_build 8000
 - **[Demo](demo.md)** — end-to-end walkthrough with local models and real output
 - **[Sample report](docs/EXAMPLE_REPORT.md)** — what the arena produces
 - **[Multi-agent study](studies/multi_agent_handoff/README.md)** — the frozen study
+- **[Releases](CHANGELOG.md)** — what shipped in each version, and which interfaces semver covers
 - **[Roadmap](docs/ROADMAP_10X.md)** — where this goes next, and what it deliberately will not become
 - **[Decisions (ADRs)](docs/DECISIONS.md)** — why trace formats, retry strategy, failure injection, and the config-driven design are what they are. The **System** column says which project each decision governs.
