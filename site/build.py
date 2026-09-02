@@ -482,6 +482,7 @@ def build() -> int:
                 jsonld=json_ld(page),
                 lastmod=page.lastmod,
                 robots="index,follow,max-image-preview:large,max-snippet:-1",
+                repo=REPO,
             )
         else:
             body = render(
@@ -540,6 +541,7 @@ def write_extras() -> None:
         jsonld="",
         lastmod="",
         robots="noindex,follow",
+        repo=REPO,
     )
     (OUT / "404.html").write_text(not_found, encoding="utf-8")
 

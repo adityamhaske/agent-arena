@@ -54,12 +54,14 @@
       <a href="{{base}}/study/">Study</a>
       <a href="{{base}}/releases/">Releases</a>
       <a href="{{base}}/roadmap/">Roadmap</a>
-      <a href="https://github.com/adityamhaske/agent-arena">GitHub</a>
+      <a href="{{repo}}">GitHub</a>
     </nav>
     <button class="icon-btn nav-toggle" type="button" data-nav-toggle aria-expanded="false" aria-label="Toggle navigation">☰</button>
     <button class="icon-btn" type="button" data-theme-toggle aria-label="Switch colour theme" title="Switch colour theme">◐</button>
   </div>
 </header>
+
+<div class="nav-backdrop" id="nav-backdrop" aria-hidden="true"></div>
 
 <div class="shell">
   <aside class="sidebar" id="sidebar" aria-label="Documentation">
@@ -78,7 +80,7 @@
     </div>
 
     <div class="doc-foot">
-      <p class="edit-link">Rendered from <a href="{{source_url}}"><code>{{source}}</code></a> in the repository.</p>
+      <p class="edit-link">Source: <a href="{{source_url}}"><code>{{source}}</code></a></p>
       {{pager}}
     </div>
   </main>
@@ -92,8 +94,11 @@
 <footer class="footer">
   <div class="wrap footer-inner">
     <span>Agent Arena — MIT licensed.</span>
-    <a href="https://github.com/adityamhaske/agent-arena">Source</a>
+    <a href="{{repo}}">Source</a>
+    <a href="{{base}}/guide/">Docs</a>
     <a href="https://adityamhaske.github.io/">More projects</a>
+    <span class="spacer"></span>
+    <span>Built by <a href="https://github.com/adityamhaske">Aditya Mhaske</a></span>
   </div>
 </footer>
 
