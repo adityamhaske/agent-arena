@@ -41,7 +41,7 @@ jobs:
       pages: write
       id-token: write
     outputs:
-      pages_ready: ${{ steps.pages.outcome == 'success' }}
+      pages_ready: ${{ steps.gate.outputs.ready }}
     steps:
       - uses: actions/checkout@v4
 
@@ -71,6 +71,21 @@ jobs:
       - name: Check for broken internal links
         run: python site/check_links.py
 
+      # Written explicitly rather than interpolated straight into `outputs`,
+      # so the value that gates deployment is visible in the build log.
+      - name: Record whether Pages is available
+        id: gate
+        run: |
+          echo "Pages configure step outcome: ${{ steps.pages.outcome }}"
+          if [ "${{ steps.pages.outcome }}" = "success" ]; then
+            echo "ready=yes" >> "$GITHUB_OUTPUT"
+            echo "Pages is configured — deploy will run."
+          else
+            echo "ready=no" >> "$GITHUB_OUTPUT"
+            echo "Pages is NOT configured. Enable it under Settings -> Pages" \
+                 "-> Source: GitHub Actions. Skipping deploy; the build above is fine."
+          fi
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site/_build
@@ -81,10 +96,7 @@ jobs:
     # `pages_ready` is false until someone enables Pages once under
     # Settings → Pages → Source: GitHub Actions; until then this is skipped
     # rather than failed, so a red X never hides a healthy docs build.
-    if: |
-      github.ref == 'refs/heads/main'
-      && github.event_name != 'pull_request'
-      && needs.build.outputs.pages_ready == 'true'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && needs.build.outputs.pages_ready == 'yes'
     needs: build
     runs-on: ubuntu-latest
     permissions:
