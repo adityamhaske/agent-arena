@@ -65,10 +65,10 @@ The live output feed matters more than the progress bar: a bar says something is
 happening, real outputs say whether it is happening *correctly* — early enough to
 stop.
 
-**Not built yet:** the runner has no cooperative cancellation check and does not
-enforce budgets, so the cancel control cannot currently stop a sweep and the caps
-do not fire. This is the largest gap between the designed and shipped
-interaction. See [../roadmap/status.md](../roadmap/status.md).
+**Now built.** The runner checks a cancel event and the budget caps between
+calls, and both stop the sweep with partial results preserved and labelled. The
+one part still missing is `confirm_above_usd`, which is parsed but does not yet
+prompt. See [../roadmap/status.md](../roadmap/status.md).
 
 ## Empty states
 

@@ -87,9 +87,20 @@ budgets:
   on_exceed: stop
 ```
 
-This block **parses and validates today**. The runner does **not** enforce it
-yet, so it is documentation of intent rather than a control. Until it lands, use
-`--dry-run` and `--limit`. See [../roadmap/status.md](../roadmap/status.md).
+**Enforced during the run.** Cost is accumulated as each call completes, and
+when a cap is crossed the sweep stops. The results already collected are kept
+and the leaderboard is labelled partial:
+
+```text
+Run stopped early (budget: spent $0.0240, over the $0.02 limit for this run).
+These results cover 4 of 60 planned calls and are partial.
+```
+
+Keeping the partial results is deliberate: the calls were already paid for, so
+discarding their answers wastes the spend without saving any.
+
+`on_exceed: warn` records the overrun without stopping. `confirm_above_usd`
+is parsed but not yet used to prompt.
 
 ## Constraints are not a cost control, but they help
 
@@ -112,11 +123,13 @@ spend:
   Spend: $0.0199
 ```
 
-A run in progress **cannot currently be cancelled** — the API has the plumbing
-but the runner never checks the flag. Ctrl-C works from the terminal and closes
-the run out as aborted with partial results kept. From the browser, there is no
-stop. This is the most user-visible gap in the product; see
-[../roadmap/status.md](../roadmap/status.md).
+A run in progress **can be cancelled**: `POST /api/jobs/{job_id}/cancel`. The
+runner checks between calls — not inside one, because a request already sent has
+already been paid for — so the stop takes effect within one call per worker. The
+partial results are kept and labelled, exactly as with a budget stop.
+
+Ctrl-C also works from the terminal and closes the run out as aborted with its
+partial results attached.
 
 ## Reviewing spend afterwards
 

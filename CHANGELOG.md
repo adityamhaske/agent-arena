@@ -10,6 +10,61 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.0.0] - unreleased
+
+### Added
+
+- `LICENSE` (MIT), `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, a PR
+  template and `CODEOWNERS`.
+- A PyPI release workflow using Trusted Publishing (OIDC, no stored token). Its
+  verify job installs the built wheel into a clean venv and scaffolds and runs a
+  project from it, because package-data omissions are the classic release bug in
+  this layout.
+- **Run and project lifecycle.** `arena projects`, `runs`, `label`, `archive`,
+  `duplicate`, `rm`, `vacuum` and `env`, and the matching HTTP routes including
+  the first `DELETE` verbs the product has ever had. Every destructive operation
+  takes `dry_run` and returns the same plan either way, so a confirmation cannot
+  misdescribe what it is about to do. A non-interactive shell without `--yes`
+  refuses rather than assuming yes.
+- **Run cancellation.** `POST /api/jobs/{id}/cancel` stops a sweep that is
+  spending money. The runner checks between calls, keeps the results already
+  collected, and labels them partial.
+- **Budget enforcement.** `budgets.max_run_usd` and `max_model_usd` stop a run
+  when the cap is crossed; `on_exceed: warn` records it without stopping.
+- **Named provider profiles** under `providers:` — two API keys for the same
+  vendor in one run, gateways with custom headers, a private CA, a proxy and
+  model-prefix rewriting. Parsing and resolution only; the runner does not yet
+  route through a profile.
+- **Credential references** — `${env:}`, `${keyring:}`, `${file:}`, `${cmd:}` —
+  and a `Secret` type whose `repr` and `str` are `***`. The OS keyring is
+  reached through the platform tool rather than a Python dependency.
+- **User settings** at `~/.config/agent-arena/settings.json`, written atomically
+  at mode 0600, plus `GET`/`PUT /api/settings`.
+- `.env` loading, wired into every command. Real environment variables win.
+- Cross-vendor prices for OpenAI, Gemini and Mistral. Models whose current list
+  price could not be sourced are omitted rather than estimated.
+- A documentation tree of 51 pages across architecture, security, design,
+  testing, reference, guides, operations and roadmap.
+
+### Changed
+
+- Store schema version 2: `deleted_at`, `archived_at` and `tags` on `runs`, with
+  an idempotent migration runner driven by sqlite's `user_version`. Every read
+  path excludes soft-deleted runs unless `include_deleted` is passed.
+- Retry now distinguishes terminal from retryable failures — a 401 fails once
+  instead of sleeping three times — and adds full jitter and `Retry-After`
+  support.
+- `arena ui` retains at most 50 finished jobs. It previously only ever inserted.
+- Archiving a project now actually hides it from the default listing.
+
+### Fixed
+
+- A `JobManager` leak that grew unbounded for the life of an `arena ui` process.
+- Eight concurrent workers retrying a rate limit in lockstep.
+- Cost silently dropping out of a cross-vendor leaderboard because the catalog
+  priced only Anthropic models.
+
+
 ## 1.0.0 — 2026-09-02
 
 First stable release. The engine, the browser UI, pipeline targets and the

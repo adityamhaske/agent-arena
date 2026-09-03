@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs (
@@ -92,6 +92,20 @@ CREATE INDEX IF NOT EXISTS idx_runs_project   ON runs(project, started_at);
 """
 
 
+#: Version -> the statements that take a database to it. Never edit a shipped
+#: entry; add a new version instead, or an upgraded database and a fresh one
+#: stop agreeing about what the schema is.
+_MIGRATIONS: dict[int, tuple[str, ...]] = {
+    2: (
+        # Soft delete, so removing a run is recoverable until `vacuum`.
+        "ALTER TABLE runs ADD COLUMN deleted_at TEXT",
+        "ALTER TABLE runs ADD COLUMN archived_at TEXT",
+        "ALTER TABLE runs ADD COLUMN tags TEXT",
+        "CREATE INDEX IF NOT EXISTS idx_runs_live ON runs(project, deleted_at, started_at)",
+    ),
+}
+
+
 def utcnow() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -107,8 +121,35 @@ class ResultStore:
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.executescript(_SCHEMA)
-        self._conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        self._migrate()
         self._conn.commit()
+
+    # ---- migrations ---------------------------------------------------
+
+    def _migrate(self) -> None:
+        """Bring an existing database up to :data:`SCHEMA_VERSION`.
+
+        Driven by sqlite's own ``user_version`` pragma, so it is idempotent and
+        needs no table of its own. Steps are additive ``ALTER TABLE ADD COLUMN``
+        statements, which sqlite applies without rewriting the table — a
+        database from an earlier version keeps every row it had.
+        """
+        current = self._conn.execute("PRAGMA user_version").fetchone()[0]
+        if current >= SCHEMA_VERSION:
+            return
+        for version, statements in sorted(_MIGRATIONS.items()):
+            if version <= current:
+                continue
+            for statement in statements:
+                try:
+                    self._conn.execute(statement)
+                except sqlite3.OperationalError as exc:
+                    # A column added by a newer arena that then rolled back
+                    # leaves the column present but the version behind. That is
+                    # recoverable; anything else is not.
+                    if "duplicate column name" not in str(exc).lower():
+                        raise
+        self._conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
     # ---- lifecycle ----------------------------------------------------
 
@@ -266,32 +307,50 @@ class ResultStore:
 
     # ---- reads --------------------------------------------------------
 
-    def runs(self, project: str | None = None, limit: int = 20) -> list[dict[str, Any]]:
-        query = "SELECT * FROM runs"
+    def runs(
+        self,
+        project: str | None = None,
+        limit: int = 20,
+        include_deleted: bool = False,
+        include_archived: bool = True,
+    ) -> list[dict[str, Any]]:
+        clauses: list[str] = []
         params: list[Any] = []
         if project:
-            query += " WHERE project = ?"
+            clauses.append("project = ?")
             params.append(project)
+        if not include_deleted:
+            clauses.append("deleted_at IS NULL")
+        if not include_archived:
+            clauses.append("archived_at IS NULL")
+        query = "SELECT * FROM runs"
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
         query += " ORDER BY started_at DESC LIMIT ?"
         params.append(limit)
         with self._lock:
             rows = self._conn.execute(query, params).fetchall()
         return [dict(row) for row in rows]
 
-    def run(self, run_id: str) -> dict[str, Any] | None:
+    def run(self, run_id: str, include_deleted: bool = False) -> dict[str, Any] | None:
         """One run by id, regardless of how far back it is."""
+        query = "SELECT * FROM runs WHERE run_id = ?"
+        if not include_deleted:
+            query += " AND deleted_at IS NULL"
         with self._lock:
-            row = self._conn.execute(
-                "SELECT * FROM runs WHERE run_id = ?", (run_id,)
-            ).fetchone()
+            row = self._conn.execute(query, (run_id,)).fetchone()
         return dict(row) if row else None
 
-    def rankings(self, run_id: str) -> list[dict[str, Any]]:
+    def rankings(self, run_id: str, include_deleted: bool = False) -> list[dict[str, Any]]:
+        # Joined to runs rather than filtered on rankings alone: a soft-deleted
+        # run must disappear from every read path, and missing one is the
+        # classic way a "deleted" row reappears somewhere else in the product.
+        query = "SELECT k.* FROM rankings k JOIN runs r ON r.run_id = k.run_id WHERE k.run_id = ?"
+        if not include_deleted:
+            query += " AND r.deleted_at IS NULL"
+        query += " ORDER BY k.rank IS NULL, k.rank"
         with self._lock:
-            rows = self._conn.execute(
-                "SELECT * FROM rankings WHERE run_id = ? ORDER BY rank IS NULL, rank",
-                (run_id,),
-            ).fetchall()
+            rows = self._conn.execute(query, (run_id,)).fetchall()
         return [dict(row) for row in rows]
 
     def results(
@@ -300,21 +359,24 @@ class ResultStore:
         model_key: str | None = None,
         test_id: str | None = None,
         limit: int = 1000,
+        include_deleted: bool = False,
     ) -> list[dict[str, Any]]:
         clauses, params = [], []
         if run_id:
-            clauses.append("run_id = ?")
+            clauses.append("e.run_id = ?")
             params.append(run_id)
         if model_key:
-            clauses.append("model_key = ?")
+            clauses.append("e.model_key = ?")
             params.append(model_key)
         if test_id:
-            clauses.append("test_id = ?")
+            clauses.append("e.test_id = ?")
             params.append(test_id)
-        query = "SELECT * FROM results"
+        if not include_deleted:
+            clauses.append("r.deleted_at IS NULL")
+        query = "SELECT e.* FROM results e JOIN runs r ON r.run_id = e.run_id"
         if clauses:
             query += " WHERE " + " AND ".join(clauses)
-        query += " ORDER BY id LIMIT ?"
+        query += " ORDER BY e.id LIMIT ?"
         params.append(limit)
         with self._lock:
             rows = self._conn.execute(query, params).fetchall()
@@ -328,7 +390,7 @@ class ResultStore:
             rows = self._conn.execute(
                 """SELECT r.run_id, r.started_at, k.rank, k.composite, k.status, k.metrics_json
                    FROM rankings k JOIN runs r ON r.run_id = k.run_id
-                   WHERE k.project = ? AND k.model_key = ?
+                   WHERE k.project = ? AND k.model_key = ? AND r.deleted_at IS NULL
                    ORDER BY r.started_at DESC LIMIT ?""",
                 (project, model_key, limit),
             ).fetchall()
@@ -349,23 +411,128 @@ class ResultStore:
         a config change — a different prompt, a different temperature — as
         trial flakiness, which is a different problem with a different fix.
         """
-        clauses = ["project = ?", "status = 'ok'"]
+        clauses = ["e.project = ?", "e.status = 'ok'", "r.deleted_at IS NULL"]
         params: list[Any] = [project]
         if run_id:
-            clauses.append("run_id = ?")
+            clauses.append("e.run_id = ?")
             params.append(run_id)
         with self._lock:
             rows = self._conn.execute(
-                f"""SELECT run_id, test_id, model_key, COUNT(*) AS n,
-                           AVG(score) AS mean_score,
-                           MIN(score) AS min_score, MAX(score) AS max_score
-                    FROM results WHERE {' AND '.join(clauses)}
-                    GROUP BY run_id, test_id, model_key
+                f"""SELECT e.run_id, e.test_id, e.model_key, COUNT(*) AS n,
+                           AVG(e.score) AS mean_score,
+                           MIN(e.score) AS min_score, MAX(e.score) AS max_score
+                    FROM results e JOIN runs r ON r.run_id = e.run_id
+                    WHERE {' AND '.join(clauses)}
+                    GROUP BY e.run_id, e.test_id, e.model_key
                     HAVING n > 1 AND max_score > min_score
                     ORDER BY (max_score - min_score) DESC""",
                 params,
             ).fetchall()
         return [dict(row) for row in rows]
+
+    # ---- lifecycle ----------------------------------------------------
+
+    def set_run_flags(self, run_id: str, **fields: Any) -> bool:
+        """Update the mutable columns on a run. Returns whether a row changed.
+
+        Only the lifecycle columns are writable here. A run's measurements are
+        immutable by design — editing what a model scored after the fact would
+        make the history worthless as evidence.
+        """
+        allowed = {"label", "notes_json", "tags", "archived_at", "deleted_at"}
+        unknown = set(fields) - allowed
+        if unknown:
+            raise ValueError(
+                f"cannot set {', '.join(sorted(unknown))} on a run; "
+                f"writable fields are {', '.join(sorted(allowed))}"
+            )
+        if not fields:
+            return False
+        assignments = ", ".join(f"{name} = ?" for name in fields)
+        with self._lock:
+            cursor = self._conn.execute(
+                f"UPDATE runs SET {assignments} WHERE run_id = ?",
+                (*fields.values(), run_id),
+            )
+            self._conn.commit()
+        return cursor.rowcount > 0
+
+    def delete_run(self, run_id: str, hard: bool = False) -> dict[str, Any]:
+        """Remove a run. Soft by default, so it is recoverable until ``vacuum``.
+
+        A hard delete cascades to ``results`` and ``rankings`` explicitly:
+        sqlite does not enforce the foreign keys here unless the pragma is on,
+        and leaving orphans would silently inflate every aggregate query.
+        """
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT run_id FROM runs WHERE run_id = ?", (run_id,)
+            ).fetchone()
+            if row is None:
+                return {"run_id": run_id, "deleted": False, "hard": hard, "results_removed": 0}
+            if not hard:
+                self._conn.execute(
+                    "UPDATE runs SET deleted_at = ? WHERE run_id = ?", (utcnow(), run_id)
+                )
+                self._conn.commit()
+                return {"run_id": run_id, "deleted": True, "hard": False, "results_removed": 0}
+            removed = self._conn.execute(
+                "SELECT COUNT(*) FROM results WHERE run_id = ?", (run_id,)
+            ).fetchone()[0]
+            self._conn.execute("DELETE FROM rankings WHERE run_id = ?", (run_id,))
+            self._conn.execute("DELETE FROM results  WHERE run_id = ?", (run_id,))
+            self._conn.execute("DELETE FROM runs     WHERE run_id = ?", (run_id,))
+            self._conn.commit()
+        return {"run_id": run_id, "deleted": True, "hard": True, "results_removed": removed}
+
+    def deleted_runs(self, project: str | None = None) -> list[dict[str, Any]]:
+        """Soft-deleted runs still occupying space — what ``vacuum`` would reclaim."""
+        query = "SELECT * FROM runs WHERE deleted_at IS NOT NULL"
+        params: list[Any] = []
+        if project:
+            query += " AND project = ?"
+            params.append(project)
+        with self._lock:
+            rows = self._conn.execute(query + " ORDER BY deleted_at", params).fetchall()
+        return [dict(row) for row in rows]
+
+    def vacuum(self, project: str | None = None, dry_run: bool = False) -> dict[str, Any]:
+        """Hard-delete every soft-deleted run, then reclaim the file space.
+
+        ``dry_run`` reports exactly what would go without touching anything, so
+        a caller can show the real number before asking for confirmation.
+        """
+        pending = self.deleted_runs(project)
+        run_ids = [row["run_id"] for row in pending]
+        plan = {
+            "runs_removed": len(run_ids),
+            "run_ids": run_ids,
+            "results_removed": 0,
+            "bytes_before": self.path.stat().st_size if self.path.exists() else 0,
+            "bytes_after": None,
+            "dry_run": dry_run,
+        }
+        if not run_ids:
+            plan["bytes_after"] = plan["bytes_before"]
+            return plan
+        with self._lock:
+            marks = ",".join("?" * len(run_ids))
+            plan["results_removed"] = self._conn.execute(
+                f"SELECT COUNT(*) FROM results WHERE run_id IN ({marks})", run_ids
+            ).fetchone()[0]
+        if dry_run:
+            plan["bytes_after"] = plan["bytes_before"]
+            return plan
+        for run_id in run_ids:
+            self.delete_run(run_id, hard=True)
+        with self._lock:
+            # VACUUM cannot run inside a transaction, and sqlite3 opens one
+            # implicitly on write; commit first or this raises.
+            self._conn.commit()
+            self._conn.execute("VACUUM")
+            self._conn.commit()
+        plan["bytes_after"] = self.path.stat().st_size if self.path.exists() else 0
+        return plan
 
     def export_csv(self, run_id: str, path: str | Path) -> Path:
         import csv  # noqa: PLC0415 — only needed on export

@@ -95,13 +95,27 @@ a row stuck at `status='running'` forever, and history becomes unreadable. The
 `finally` block also closes every connector, so sockets are released whichever
 way the run ended.
 
+## Stopping early
+
+`_should_stop` runs after each completion and returns a reason, or `None`.
+
+| Reason | Trigger |
+|---|---|
+| `cancelled` | The caller set the runner's `cancel_event` |
+| `budget` | Accumulated spend crossed `budgets.max_run_usd` or `max_model_usd`, with `on_exceed: stop` |
+
+The check sits **between** calls, not inside one. A request already sent has
+already been paid for, so abandoning its answer would waste the money without
+saving any.
+
+When it fires, pending futures are cancelled, the pool drains what is in flight,
+and the collected results are kept — with a note on the leaderboard saying how
+many of the planned calls they cover. A truncated sweep presented as a complete
+one is exactly the quiet lie this project exists to avoid.
+
 ## What is not built yet
 
-- **Cooperative cancellation.** `web/api.py` has a cancel event on the `Job` and
-  `ArenaAPI.cancel_run`, but the runner has no check that observes it, so a
-  running sweep cannot yet be stopped mid-flight.
-- **Budget enforcement.** `budgets:` parses into `BudgetSettings`, but the runner
-  does not yet halt on a cap.
 - **Resume.** An interrupted run cannot be continued; it starts over.
+- **`confirm_above_usd`.** Parsed, but nothing prompts on it yet.
 
 See [../roadmap/status.md](../roadmap/status.md).

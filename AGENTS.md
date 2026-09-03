@@ -79,14 +79,20 @@ Two conventions bind everything in the layer:
   plan and the execution can diverge, the confirmation dialog is lying about
   what is going to happen.
 - **Caller-supplied names are hostile.** A project name or run id arriving from
-  HTTP is untrusted input. Resolve the path and prove it is inside the
-  directory you meant before unlinking anything.
+  HTTP is untrusted input. `service/paths.py` is the one place that check
+  lives — `resolve_within` proves the path is inside the directory you meant
+  before anything unlinks it. Do not hand-roll a second version of it.
+- **A run that stopped early says so.** Cancellation and budget caps both keep
+  the results already collected, because those calls were already paid for. The
+  leaderboard carries a note saying how many of the planned calls the numbers
+  cover. A truncated sweep presented as a complete one is the quiet lie this
+  project exists to avoid.
 
 ## Before you push
 
 ```bash
 pip install -e ".[dev]"
-pytest -q                                              # 472 tests, all offline
+pytest -q                                              # 526 tests, all offline
 
 arena validate --project projects/support_triage
 arena evaluate --project projects/support_triage --quiet --no-report

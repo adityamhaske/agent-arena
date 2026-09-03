@@ -137,8 +137,13 @@ class ArenaRunner:
         hooks: HookSet | None = None,
         store: ResultStore | None = None,
         progress: ProgressCallback | None = None,
+        cancel_event: threading.Event | None = None,
     ) -> None:
         self.config = config
+        #: Set by a caller to stop a sweep mid-flight. Checked between calls
+        #: rather than inside one: a request already sent has already been paid
+        #: for, so abandoning its answer wastes the money without saving any.
+        self.cancel_event = cancel_event or threading.Event()
         self.registry = registry or build_registry(config)
         self.price_book = price_book or build_price_book(config)
         self.hooks = hooks or HookSet.load(config.hooks, base_dir=config.root)
@@ -166,10 +171,11 @@ class ArenaRunner:
         cls,
         project_path: str | Path,
         progress: ProgressCallback | None = None,
+        cancel_event: threading.Event | None = None,
         **overrides: Any,
     ) -> ArenaRunner:
         config = load_config(project_path, **overrides)
-        return cls(config, progress=progress)
+        return cls(config, progress=progress, cancel_event=cancel_event)
 
     @property
     def store(self) -> ResultStore:
@@ -289,6 +295,7 @@ class ArenaRunner:
         connectors = {spec.key: self._connector_for(spec) for spec in runnable}
         results: list[CallResult] = []
         completed = 0
+        stopped_early: str | None = None
 
         try:
             jobs = [
@@ -338,6 +345,15 @@ class ArenaRunner:
                             f"stopping: {spec.key} failed on {case.id} — {result.error} "
                             "(run.fail_fast is on)"
                         )
+
+                    stop = self._should_stop(results)
+                    if stop is not None:
+                        # Cancel what has not started; the pool drains the rest.
+                        for pending in futures:
+                            pending.cancel()
+                        stopped_early = stop
+                        self._emit("run_stopped", reason=stop, completed=completed)
+                        break
         except BaseException:
             # An abandoned run must not be left looking live. Close it out as
             # aborted — with the results it did produce still attached — so the
@@ -369,6 +385,15 @@ class ArenaRunner:
                 # Replace rather than append: "no results recorded" is a
                 # consequence of the skip, not a second problem.
                 entry.failures = [f"skipped — {reason}"]
+
+        if stopped_early:
+            # The leaderboard must say so. A truncated sweep presented as a
+            # complete one is exactly the kind of quiet lie this project exists
+            # to avoid.
+            leaderboard.notes.append(
+                f"Run stopped early ({stopped_early}). These results cover "
+                f"{len(results)} of {planned} planned calls and are partial."
+            )
 
         duration = time.perf_counter() - started
         total_cost = sum(r.cost_usd or 0.0 for r in results)
@@ -511,6 +536,42 @@ class ArenaRunner:
         result.detail.update(verdict.detail)
         self.hooks.apply_on_result(result)
         return result
+
+    def _should_stop(self, results: list[CallResult]) -> str | None:
+        """Why this run should stop now, or ``None`` to keep going.
+
+        Checked after each completion. Both reasons preserve the results already
+        collected — a partial answer that says it is partial is far more useful
+        than throwing away what the spend already bought.
+        """
+        if self.cancel_event.is_set():
+            return "cancelled"
+
+        budgets = self.config.budgets
+        if budgets.on_exceed != "stop":
+            return None
+
+        if budgets.max_run_usd is not None:
+            spent = sum(r.cost_usd or 0.0 for r in results)
+            if spent > budgets.max_run_usd:
+                return (
+                    f"budget: spent ${spent:.4f}, over the "
+                    f"${budgets.max_run_usd:.2f} limit for this run"
+                )
+
+        if budgets.max_model_usd is not None:
+            per_model: dict[str, float] = {}
+            for result in results:
+                per_model[result.model_key] = (
+                    per_model.get(result.model_key, 0.0) + (result.cost_usd or 0.0)
+                )
+            for key, spent in per_model.items():
+                if spent > budgets.max_model_usd:
+                    return (
+                        f"budget: {key} spent ${spent:.4f}, over the "
+                        f"${budgets.max_model_usd:.2f} per-model limit"
+                    )
+        return None
 
     def _generate_with_retries(self, connector: Any, request: GenerationRequest):
         """Call the model, retrying only what a retry could actually fix.

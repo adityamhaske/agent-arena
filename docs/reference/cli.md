@@ -129,8 +129,69 @@ Binding to a non-loopback host puts an unauthenticated API on your network. See
 | 1 | An `ArenaError` — config problem, validation failure, or `--fail-under` not met |
 | 130 | Interrupted |
 
+## Lifecycle commands
+
+### `arena projects`
+
+List projects. `--projects-dir` (default `projects`), `--all` to include
+archived ones.
+
+### `arena runs`
+
+List past runs for a project. `--limit`, and `--all` to include soft-deleted
+runs.
+
+### `arena label <run-id> --project <p>`
+
+Give a run a human name, so it is not only `run_20260903_175823_38dd9f`.
+`--label` and `--notes`.
+
+### `arena archive project|run <name>`
+
+Hide something from the default listings without destroying it. `--undo`
+reverses it. Archiving a run needs `--project`.
+
+### `arena duplicate <name> <new-name>`
+
+Copy a project, **excluding** `results/` and any database. The copy's
+`project:` field is rewritten so the two stay distinguishable.
+
+### `arena rm project|run <name>`
+
+Delete something.
+
+| Flag | Does |
+|---|---|
+| `--dry-run` | Print the plan and exit; change nothing |
+| `--yes` / `-y` | Skip the confirmation prompt |
+| `--keep-results` | (projects) Remove config and scorers, keep `results/` |
+| `--hard` | (runs) Remove outright instead of soft-deleting |
+| `--project` | (runs) Which project the run belongs to |
+
+```bash
+arena rm run run_20260903_175823_38dd9f --project projects/my_project --dry-run
+arena rm project old_experiment --keep-results --yes
+```
+
+The plan prints before the prompt, so you see exactly what will go. **A
+non-interactive stdin without `--yes` refuses** rather than assuming yes — a
+script that deletes a project because nobody was there to answer is the worst
+available default.
+
+A deleted run is soft-deleted: hidden from every listing and from history, and
+recoverable until `arena vacuum`.
+
+### `arena vacuum --project <p>`
+
+Permanently remove soft-deleted runs and reclaim the file space. `--dry-run`,
+`--yes`.
+
+### `arena env --project <p>`
+
+Show which `.env` files were found, nearest last. **Values are never printed.**
+
 ## Planned commands
 
-`rm`, `export`, `duplicate`, `archive`, `vacuum`, `label`, `secrets`,
-`providers`, `config`, `env`, `watch`, and `evaluate --resume` are designed but
-not built. See [../roadmap/status.md](../roadmap/status.md).
+`export`, `secrets`, `providers`, `config`, `watch`, and
+`evaluate --resume` are designed but not built. See
+[../roadmap/status.md](../roadmap/status.md).

@@ -43,7 +43,13 @@ def build_routes(api: ArenaAPI) -> list[Route]:
     name = r"(?P<name>[a-z0-9][a-z0-9_-]{0,63})"
     return [
         Route("GET", r"/api/catalog", lambda **_: api.catalog()),
-        Route("GET", r"/api/projects", lambda **_: {"projects": api.list_projects()}),
+        Route(
+            "GET",
+            r"/api/projects",
+            lambda query, **_: {
+                "projects": api.list_projects(include_archived=_truthy(query.get("all")))
+            },
+        ),
         Route("POST", r"/api/projects", lambda body, **_: api.create_project(body)),
         Route("GET", rf"/api/projects/{name}", lambda name, **_: api.describe_project(name)),
         Route("PUT", rf"/api/projects/{name}", lambda name, body, **_: api.update_project(name, body)),
@@ -61,6 +67,32 @@ def build_routes(api: ArenaAPI) -> list[Route]:
             lambda name, body, **_: api.rescore(name, body.get("run_id"), body),
         ),
         Route("GET", r"/api/jobs/(?P<job_id>[a-f0-9]{1,32})", lambda job_id, **_: api.job_status(job_id)),
+        Route(
+            "POST",
+            r"/api/jobs/(?P<job_id>[a-f0-9]{1,32})/cancel",
+            lambda job_id, **_: api.cancel_run(job_id),
+        ),
+
+        # Lifecycle. Until these existed the product had no way to remove
+        # anything: a project created by a typo was permanent and the database
+        # grew forever.
+        Route("DELETE", rf"/api/projects/{name}", lambda name, query, **_: api.delete_project(name, query)),
+        Route("POST", rf"/api/projects/{name}/duplicate", lambda name, body, **_: api.duplicate_project(name, body)),
+        Route("POST", rf"/api/projects/{name}/archive", lambda name, body, **_: api.archive_project(name, body)),
+        Route("GET", rf"/api/projects/{name}/runs", lambda name, query, **_: api.list_runs(name, query)),
+        Route(
+            "DELETE",
+            rf"/api/projects/{name}/runs/(?P<run_id>[A-Za-z0-9_.-]{{1,80}})",
+            lambda name, run_id, query, **_: api.delete_run(name, run_id, query),
+        ),
+        Route(
+            "POST",
+            rf"/api/projects/{name}/runs/(?P<run_id>[A-Za-z0-9_.-]{{1,80}})/label",
+            lambda name, run_id, body, **_: api.label_run(name, run_id, body),
+        ),
+        Route("POST", rf"/api/projects/{name}/vacuum", lambda name, query, **_: api.vacuum(name, query)),
+        Route("GET", r"/api/settings", lambda **_: api.settings()),
+        Route("PUT", r"/api/settings", lambda body, **_: api.update_settings(body)),
     ]
 
 
@@ -147,6 +179,9 @@ class ArenaHandler(BaseHTTPRequestHandler):
     def do_PUT(self) -> None:  # noqa: N802
         self._dispatch("PUT")
 
+    def do_DELETE(self) -> None:  # noqa: N802
+        self._dispatch("DELETE")
+
     def _dispatch(self, method: str) -> None:
         if not self._host_allowed():
             self._json(403, {"error": "This server only answers requests from localhost."})
@@ -161,6 +196,8 @@ class ArenaHandler(BaseHTTPRequestHandler):
 
         try:
             body = self._read_body() if method in ("POST", "PUT") else {}
+            # DELETE takes its options from the query string; a body on a
+            # DELETE is not universally supported by clients or proxies.
             for route in self.routes:
                 if route.method != method:
                     continue
@@ -203,6 +240,10 @@ class ArenaHandler(BaseHTTPRequestHandler):
             content_type or "application/octet-stream",
             {"Cache-Control": cache},
         )
+
+
+def _truthy(value: Any) -> bool:
+    return str(value or "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _parse_query(query_string: str) -> dict[str, str]:

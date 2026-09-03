@@ -32,6 +32,23 @@ Base URL: `http://localhost:8420`.
 | GET | `/api/projects/{name}/result?run_id=` | A stored run (default: latest) |
 | POST | `/api/projects/{name}/whatif` | Re-rank stored results under new weights |
 | GET | `/api/jobs/{job_id}` | Job status |
+| POST | `/api/jobs/{job_id}/cancel` | Stop a sweep that is spending money |
+| DELETE | `/api/projects/{name}` | Delete a project — `?keep_results=&dry_run=` |
+| POST | `/api/projects/{name}/duplicate` | Copy a project, excluding its results |
+| POST | `/api/projects/{name}/archive` | Hide it from the default listing |
+| GET | `/api/projects/{name}/runs` | Runs for a project — `?limit=&include_deleted=` |
+| DELETE | `/api/projects/{name}/runs/{run_id}` | Delete a run — `?hard=&dry_run=` |
+| POST | `/api/projects/{name}/runs/{run_id}/label` | Label a run |
+| POST | `/api/projects/{name}/vacuum` | Permanently remove soft-deleted runs |
+| GET | `/api/settings` | User settings |
+| PUT | `/api/settings` | Update user settings |
+
+`GET /api/projects` takes `?all=1` to include archived projects.
+
+**`DELETE` takes its options from the query string**, not a body — a body on a
+DELETE is not universally supported by clients and proxies. Every destructive
+route accepts `dry_run=1` and returns the identical plan without changing
+anything, so a confirmation dialog can show exactly what is about to happen.
 
 ## Errors
 
@@ -91,8 +108,5 @@ Re-ranks from stored results — no model calls, no spend. It runs the real
 
 ## Planned
 
-No `DELETE` verb exists today, and `ArenaHandler` implements only GET, HEAD, POST
-and PUT. Planned: delete for projects and runs, duplicate, archive, label,
-vacuum, export, cross-project run listing, job cancellation, settings, providers,
-and server-sent events replacing polling. See
-[../roadmap/status.md](../roadmap/status.md).
+Export, provider management, cross-project run listing, and server-sent events
+replacing polling. See [../roadmap/status.md](../roadmap/status.md).

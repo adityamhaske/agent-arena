@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from .core.config import ProjectConfig, load_config
+from .core.env import load_env
 from .core.errors import ArenaError
 from .core.report import Report, format_metric, text_table, write_reports
 from .connectors.registry import resolve_provider
@@ -108,6 +109,53 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ui.add_argument("--no-browser", action="store_true", help="do not open a browser window")
     ui.add_argument("--verbose", action="store_true", help="log every request")
+
+    projects_cmd = sub.add_parser("projects", help="list projects in the projects folder")
+    projects_cmd.add_argument("--projects-dir", default="projects")
+    projects_cmd.add_argument("--all", action="store_true", help="include archived projects")
+
+    runs_cmd = sub.add_parser("runs", help="list past runs")
+    add_project(runs_cmd)
+    runs_cmd.add_argument("--limit", type=int, default=20)
+    runs_cmd.add_argument("--all", action="store_true", help="include deleted runs")
+
+    label = sub.add_parser("label", help="give a run a human name")
+    add_project(label)
+    label.add_argument("run_id")
+    label.add_argument("--label")
+    label.add_argument("--notes")
+
+    archive = sub.add_parser("archive", help="hide a project or run from default listings")
+    archive.add_argument("what", choices=["project", "run"])
+    archive.add_argument("name", help="project name, or run id")
+    archive.add_argument("--projects-dir", default="projects")
+    archive.add_argument("--project", help="project the run belongs to")
+    archive.add_argument("--undo", action="store_true", help="unarchive instead")
+
+    duplicate = sub.add_parser("duplicate", help="copy a project, excluding its results")
+    duplicate.add_argument("name")
+    duplicate.add_argument("new_name")
+    duplicate.add_argument("--projects-dir", default="projects")
+
+    rm = sub.add_parser("rm", help="delete a project or a run")
+    rm.add_argument("what", choices=["project", "run"])
+    rm.add_argument("name", help="project name, or run id")
+    rm.add_argument("--projects-dir", default="projects")
+    rm.add_argument("--project", help="project the run belongs to")
+    rm.add_argument("--keep-results", action="store_true",
+                    help="delete the config but keep results/ and its database")
+    rm.add_argument("--hard", action="store_true",
+                    help="remove a run outright instead of soft-deleting it")
+    rm.add_argument("--dry-run", action="store_true", help="show the plan, change nothing")
+    rm.add_argument("--yes", "-y", action="store_true", help="do not ask for confirmation")
+
+    vacuum = sub.add_parser("vacuum", help="permanently remove soft-deleted runs")
+    add_project(vacuum)
+    vacuum.add_argument("--dry-run", action="store_true")
+    vacuum.add_argument("--yes", "-y", action="store_true")
+
+    env_cmd = sub.add_parser("env", help="show which .env files were found (values redacted)")
+    add_project(env_cmd)
 
     validate = sub.add_parser("validate", help="check a project's config and test files")
     add_project(validate)
@@ -542,8 +590,204 @@ def _clip(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
+def _confirm(question: str, assume_yes: bool) -> bool:
+    """Ask before destroying something.
+
+    A non-interactive stdin without --yes REFUSES rather than assuming yes. A
+    script that deletes a project because nobody was there to answer is the
+    worst available default.
+    """
+    if assume_yes:
+        return True
+    if not sys.stdin.isatty():
+        print(
+            "error: refusing to delete without confirmation.\n"
+            "       stdin is not a terminal — pass --yes to confirm, "
+            "or --dry-run to see the plan.",
+            file=sys.stderr,
+        )
+        return False
+    return input(f"{question} [y/N] ").strip().lower() in ("y", "yes")
+
+
+def _print_plan(plan: dict[str, Any]) -> None:
+    paths = plan.get("paths") or plan.get("report_files") or []
+    print("\n  This will remove:")
+    for path in paths[:10]:
+        print(f"    {path}")
+    if len(paths) > 10:
+        print(f"    … and {len(paths) - 10} more")
+    if plan.get("runs_removed"):
+        print(f"    {plan['runs_removed']} run(s) of history")
+    if plan.get("results_removed"):
+        print(f"    {plan['results_removed']} recorded call(s)")
+    if plan.get("bytes"):
+        print(f"    {plan['bytes'] / 1024:.0f} KB")
+    print()
+
+
+def cmd_projects(args: argparse.Namespace) -> int:
+    from .service import projects as svc  # noqa: PLC0415
+
+    rows = svc.list_projects(args.projects_dir, include_archived=args.all)
+    if not rows:
+        print(f"No projects in {Path(args.projects_dir).resolve()}.")
+        print("Create one:  arena init projects/my_project")
+        return 0
+    print(f"\n  {'name':22} {'models':>7} {'runs':>6}  status")
+    print(f"  {'-' * 22} {'-' * 7:>7} {'-' * 6:>6}  ------")
+    for row in rows:
+        status = "error" if row.get("error") else ("archived" if row.get("archived") else "")
+        print(f"  {row['name']:22} {row.get('models', 0):>7} {row.get('runs', 0):>6}  {status}")
+    print()
+    return 0
+
+
+def cmd_runs(args: argparse.Namespace) -> int:
+    from .service import runs as svc  # noqa: PLC0415
+
+    root = Path(args.project)
+    rows = svc.list_runs(
+        root.parent, root.name, limit=args.limit, include_deleted=args.all
+    )
+    if not rows:
+        print("No runs yet.")
+        return 0
+    print(f"\n  {'run id':34} {'when':20} {'winner':16} {'cost':>9}  status")
+    for row in rows:
+        state = "deleted" if row.get("deleted_at") else (
+            "archived" if row.get("archived_at") else row.get("status", "")
+        )
+        cost = row.get("total_cost_usd")
+        label = row.get("label") or ""
+        print(
+            f"  {row['run_id']:34} {str(row.get('started_at', ''))[:19]:20} "
+            f"{str(row.get('winner') or '—')[:16]:16} "
+            f"{('$%.4f' % cost) if cost is not None else '—':>9}  {state} {label}"
+        )
+    print()
+    return 0
+
+
+def cmd_label(args: argparse.Namespace) -> int:
+    from .service import runs as svc  # noqa: PLC0415
+
+    root = Path(args.project)
+    svc.label_run(root.parent, root.name, args.run_id, label=args.label, notes=args.notes)
+    print(f"Labelled {args.run_id}.")
+    return 0
+
+
+def cmd_archive(args: argparse.Namespace) -> int:
+    from .service import projects as pj, runs as rn  # noqa: PLC0415
+
+    archived = not args.undo
+    if args.what == "project":
+        pj.archive_project(args.projects_dir, args.name, archived)
+    else:
+        if not args.project:
+            print("error: --project is required when archiving a run", file=sys.stderr)
+            return 1
+        root = Path(args.project)
+        rn.archive_run(root.parent, root.name, args.name, archived)
+    print(f"{'Archived' if archived else 'Unarchived'} {args.what} {args.name}.")
+    return 0
+
+
+def cmd_duplicate(args: argparse.Namespace) -> int:
+    from .service import projects as svc  # noqa: PLC0415
+
+    detail = svc.duplicate_project(args.projects_dir, args.name, args.new_name)
+    print(f"Copied {args.name} to {detail['name']} (results not copied).")
+    print(f"  arena evaluate --project {detail['path']}")
+    return 0
+
+
+def cmd_rm(args: argparse.Namespace) -> int:
+    from .service import projects as pj, runs as rn  # noqa: PLC0415
+
+    if args.what == "project":
+        plan = pj.delete_project(
+            args.projects_dir, args.name, keep_results=args.keep_results, dry_run=True
+        )
+        target = f"project {args.name!r}"
+    else:
+        if not args.project:
+            print("error: --project is required when deleting a run", file=sys.stderr)
+            return 1
+        root = Path(args.project)
+        plan = rn.delete_run(
+            root.parent, root.name, args.name, hard=args.hard, dry_run=True
+        )
+        target = f"run {args.name!r}"
+
+    _print_plan(plan)
+    if args.dry_run:
+        print("  (dry run — nothing was changed)")
+        return 0
+    if not _confirm(f"Delete {target}?", args.yes):
+        print("Cancelled.")
+        return 1
+
+    if args.what == "project":
+        pj.delete_project(args.projects_dir, args.name, keep_results=args.keep_results)
+    else:
+        root = Path(args.project)
+        rn.delete_run(root.parent, root.name, args.name, hard=args.hard)
+        if not args.hard:
+            print("  (soft delete — `arena vacuum` removes it permanently)")
+    print(f"Deleted {target}.")
+    return 0
+
+
+def cmd_vacuum(args: argparse.Namespace) -> int:
+    from .service import runs as svc  # noqa: PLC0415
+
+    root = Path(args.project)
+    plan = svc.vacuum(root.parent, root.name, dry_run=True)
+    if not plan["runs_removed"]:
+        print("Nothing to reclaim — no deleted runs.")
+        return 0
+    print(f"\n  This will permanently remove {plan['runs_removed']} deleted run(s)")
+    print(f"  and {plan['results_removed']} recorded call(s).\n")
+    if args.dry_run:
+        print("  (dry run — nothing was changed)")
+        return 0
+    if not _confirm("Permanently remove them?", args.yes):
+        print("Cancelled.")
+        return 1
+    done = svc.vacuum(root.parent, root.name)
+    freed = (done["bytes_before"] - (done["bytes_after"] or 0)) / 1024
+    print(f"Removed {done['runs_removed']} run(s); reclaimed {freed:.0f} KB.")
+    return 0
+
+
+def cmd_env(args: argparse.Namespace) -> int:
+    from .core.env import find_env_files  # noqa: PLC0415
+
+    files = find_env_files(args.project)
+    if not files:
+        print("No .env files found.")
+        print("  Looked in: ~/.config/agent-arena/.env and <project>/.env")
+        return 0
+    print("\n  .env files, nearest last (nearer wins):\n")
+    for path in files:
+        print(f"    {path}")
+    print("\n  Values are not shown. A real environment variable always wins")
+    print("  over a file, so an exported key beats a stale .env.\n")
+    return 0
+
+
 COMMANDS = {
     "evaluate": cmd_evaluate,
+    "projects": cmd_projects,
+    "runs": cmd_runs,
+    "label": cmd_label,
+    "archive": cmd_archive,
+    "duplicate": cmd_duplicate,
+    "rm": cmd_rm,
+    "vacuum": cmd_vacuum,
+    "env": cmd_env,
     "run": cmd_evaluate,
     "report": cmd_report,
     "history": cmd_history,
@@ -559,6 +803,12 @@ COMMANDS = {
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    # Load .env before anything reads a credential. Real environment variables
+    # win, so an explicitly exported key always beats a stale file. Without
+    # this, a UI launched from a desktop icon sees none of the keys set in a
+    # shell profile and silently skips every real model.
+    load_env(getattr(args, "project", None) or ".")
 
     if getattr(args, "version", False):
         from . import __version__  # noqa: PLC0415

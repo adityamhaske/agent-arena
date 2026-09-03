@@ -323,7 +323,7 @@ class ArenaAPI:
 
     # ---- projects ------------------------------------------------------
 
-    def list_projects(self) -> list[dict[str, Any]]:
+    def list_projects(self, include_archived: bool = False) -> list[dict[str, Any]]:
         out = []
         for path in sorted(self.projects_dir.iterdir()):
             if not path.is_dir():
@@ -332,6 +332,11 @@ class ArenaAPI:
                 config = load_config(path)
             except ArenaError:
                 continue  # a folder that is not a project is not an error
+            archived = bool(config.raw.get("archived"))
+            if archived and not include_archived:
+                # Archive has to actually hide things, or it is just a flag
+                # nobody can see and the user reaches for delete instead.
+                continue
             last = self._last_run(config)
             out.append(
                 {
@@ -340,6 +345,7 @@ class ArenaAPI:
                     "description": (config.description or "").strip(),
                     "models": len(config.enabled_models),
                     "tests": self._count_tests(config),
+                    "archived": archived,
                     "last_run": last,
                 }
             )
@@ -543,17 +549,21 @@ class ArenaAPI:
 
         def target(job: Job) -> None:
             try:
-                # Cancellation plumbs in here as cancel_event=job.cancel_event,
-                # once ArenaRunner accepts it; today it does not.
                 runner = ArenaRunner.from_project(
-                    config.root, progress=job.on_event, **overrides
+                    config.root,
+                    progress=job.on_event,
+                    cancel_event=job.cancel_event,
+                    **overrides,
                 )
                 result = runner.run()
                 payload = self._present_run(result.leaderboard.to_dict(), config, result)
                 with job._lock:  # noqa: SLF001 — same module, one writer
                     job.run_id = result.run_id
                     job.payload = payload
-                    job.status = "done"
+                    # A cancelled sweep produced real, partial results. Reporting
+                    # it as "done" would present a truncated leaderboard as a
+                    # complete one.
+                    job.status = "cancelled" if job.cancel_event.is_set() else "done"
                     job.finished_at = time.time()
             except BaseException as exc:  # noqa: BLE001 — surfaced to the browser
                 with job._lock:  # noqa: SLF001
@@ -563,6 +573,88 @@ class ArenaAPI:
                     job.finished_at = time.time()
 
         return self.jobs.start(config.project, target).snapshot()
+
+    def cancel_run(self, job_id: str) -> dict[str, Any]:
+        """Stop a sweep that is spending money. Idempotent."""
+        job = self.jobs.get(job_id)
+        job.cancel()
+        return job.snapshot()
+
+    # ---- lifecycle -----------------------------------------------------
+
+    def delete_project(self, name: str, query: dict[str, Any] | None = None) -> dict[str, Any]:
+        from ..service import projects as svc  # noqa: PLC0415
+
+        query = query or {}
+        return svc.delete_project(
+            self.projects_dir,
+            name,
+            keep_results=_flag(query.get("keep_results")),
+            dry_run=_flag(query.get("dry_run")),
+        )
+
+    def duplicate_project(self, name: str, body: dict[str, Any]) -> dict[str, Any]:
+        from ..service import projects as svc  # noqa: PLC0415
+
+        new_name = str(body.get("name") or body.get("new_name") or "").strip()
+        if not new_name:
+            raise ApiError("give the copy a name.")
+        return svc.duplicate_project(self.projects_dir, name, new_name)
+
+    def archive_project(self, name: str, body: dict[str, Any]) -> dict[str, Any]:
+        from ..service import projects as svc  # noqa: PLC0415
+
+        return svc.archive_project(self.projects_dir, name, bool(body.get("archived", True)))
+
+    def list_runs(self, name: str, query: dict[str, Any] | None = None) -> dict[str, Any]:
+        from ..service import runs as svc  # noqa: PLC0415
+
+        query = query or {}
+        return {
+            "runs": svc.list_runs(
+                self.projects_dir,
+                name,
+                limit=int(query.get("limit") or 50),
+                include_deleted=_flag(query.get("include_deleted")),
+            )
+        }
+
+    def delete_run(
+        self, name: str, run_id: str, query: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        from ..service import runs as svc  # noqa: PLC0415
+
+        query = query or {}
+        return svc.delete_run(
+            self.projects_dir,
+            name,
+            run_id,
+            hard=_flag(query.get("hard")),
+            dry_run=_flag(query.get("dry_run")),
+        )
+
+    def label_run(self, name: str, run_id: str, body: dict[str, Any]) -> dict[str, Any]:
+        from ..service import runs as svc  # noqa: PLC0415
+
+        return svc.label_run(
+            self.projects_dir, name, run_id,
+            label=body.get("label"), notes=body.get("notes"),
+        )
+
+    def vacuum(self, name: str, query: dict[str, Any] | None = None) -> dict[str, Any]:
+        from ..service import runs as svc  # noqa: PLC0415
+
+        return svc.vacuum(self.projects_dir, name, dry_run=_flag((query or {}).get("dry_run")))
+
+    def settings(self) -> dict[str, Any]:
+        from ..service import settings as svc  # noqa: PLC0415
+
+        return svc.load()
+
+    def update_settings(self, body: dict[str, Any]) -> dict[str, Any]:
+        from ..service import settings as svc  # noqa: PLC0415
+
+        return svc.save(body)
 
     def job_status(self, job_id: str) -> dict[str, Any]:
         return self.jobs.get(job_id).snapshot()
@@ -705,6 +797,11 @@ class _Spec:
         self.provider = provider
         self.api_key_env = None
         self.api_base = None
+
+
+def _flag(value: Any) -> bool:
+    """A query-string flag. Absent, "0", "false" and "" are all false."""
+    return str(value or "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def _key_present(env: str | None) -> bool:

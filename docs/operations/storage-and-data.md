@@ -111,27 +111,34 @@ A few hundred runs of a few hundred calls is comfortably a few tens of megabytes
 
 ## Cleaning up
 
-There is **no delete yet** — no `arena rm`, no `DELETE` route, no soft delete.
-Removing data means deleting files by hand.
-
-Safe to remove:
-
-| Path | Effect |
-|---|---|
-| `results/run_<id>/` | Removes report files; the database rows remain |
-| `results/arena.sqlite` | Removes **all** history for that database |
-
-Deleting a run's rows by hand is possible but must cascade, or you leave orphans:
-
-```sql
-DELETE FROM rankings WHERE run_id = '<id>';
-DELETE FROM results  WHERE run_id = '<id>';
-DELETE FROM runs     WHERE run_id = '<id>';
-VACUUM;
+```bash
+arena rm run <run-id> --project projects/my_project --dry-run   # see the plan
+arena rm run <run-id> --project projects/my_project             # soft delete
+arena vacuum --project projects/my_project                      # reclaim space
 ```
 
-Back the file up first. Soft delete, `arena rm run`, and `arena vacuum` are
-planned; see [../roadmap/status.md](../roadmap/status.md).
+A run is **soft-deleted** by default: hidden from every listing, from history
+and from trends, but still on disk and recoverable until `vacuum`. Its report
+files under `results/<run_id>/` are removed immediately.
+
+| Command | Effect |
+|---|---|
+| `arena rm run <id>` | Soft delete — recoverable |
+| `arena rm run <id> --hard` | Removes the rows outright, cascading to results and rankings |
+| `arena vacuum` | Hard-removes every soft-deleted run, then reclaims file space |
+| `arena rm project <name>` | Removes the whole folder |
+| `arena rm project <name> --keep-results` | Removes config and scorers, keeps `results/` |
+
+Every one of them prints the plan before asking, and `--dry-run` prints it
+without doing anything. A non-interactive shell without `--yes` refuses rather
+than assuming yes.
+
+### The schema behind it
+
+Soft delete is a `deleted_at` timestamp on `runs`, added by schema version 2.
+A database created by an earlier version is migrated on first open, driven by
+sqlite's `user_version` pragma — additive `ALTER TABLE` statements only, so no
+row is rewritten or lost.
 
 ## Backing up
 

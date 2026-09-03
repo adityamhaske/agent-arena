@@ -139,7 +139,7 @@ deprecated stdlib call fails the build rather than accumulating.
 ## Before you push
 
 ```bash
-python3 -m pytest -q                                       # 472, all offline
+python3 -m pytest -q                                       # 526, all offline
 arena validate --project projects/support_triage
 arena evaluate --project projects/support_triage --quiet --no-report
 arena evaluate --project projects/pipeline_demo  --quiet --no-report
