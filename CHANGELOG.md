@@ -33,8 +33,15 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   when the cap is crossed; `on_exceed: warn` records it without stopping.
 - **Named provider profiles** under `providers:` — two API keys for the same
   vendor in one run, gateways with custom headers, a private CA, a proxy and
-  model-prefix rewriting. Parsing and resolution only; the runner does not yet
-  route through a profile.
+  model-prefix rewriting. The runner routes through them; asserted against a
+  recording server rather than against the config object, because a config
+  field that parses and changes nothing is the worst state for one to be in.
+- **Export** — `arena export` and `GET /api/projects/{name}/export` write a run
+  as CSV, JSON, markdown or HTML. The HTML is a single self-contained file with
+  no CDN and no script, so it opens offline on a locked-down laptop.
+- **`arena providers`, `arena secrets`, `arena config`.** A literal key passed
+  to `providers add` is moved into the OS keyring and only the reference reaches
+  `settings.json`.
 - **Credential references** — `${env:}`, `${keyring:}`, `${file:}`, `${cmd:}` —
   and a `Secret` type whose `repr` and `str` are `***`. The OS keyring is
   reached through the platform tool rather than a Python dependency.
@@ -56,6 +63,18 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   support.
 - `arena ui` retains at most 50 finished jobs. It previously only ever inserted.
 - Archiving a project now actually hides it from the default listing.
+- The credential primitives moved from `service.secrets` to `core.secrets`, so
+  the connector registry can resolve a profile's key without importing
+  `service` — which would have been a cycle and would have pointed the
+  dependency arrow backwards. `service.secrets` re-exports them and keeps the
+  management side. `SecretError` joins the hierarchy in `core.errors`.
+
+### Security
+
+- A non-`GET` request carrying an `Origin` from another site is refused. The
+  Host allow-list stops DNS rebinding but not a plain cross-site form POST,
+  which carries a legitimate Host header.
+- A request with no `Host` header is refused rather than allowed.
 
 ### Fixed
 

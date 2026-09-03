@@ -42,6 +42,7 @@ Base URL: `http://localhost:8420`.
 | POST | `/api/projects/{name}/vacuum` | Permanently remove soft-deleted runs |
 | GET | `/api/settings` | User settings |
 | PUT | `/api/settings` | Update user settings |
+| GET | `/api/projects/{name}/export` | Write a run to disk — `?run_id=&format=` |
 
 `GET /api/projects` takes `?all=1` to include archived projects.
 
@@ -106,7 +107,15 @@ POST /api/projects/support_triage/whatif
 Re-ranks from stored results — no model calls, no spend. It runs the real
 `build_leaderboard`, so a what-if and a fresh run can never disagree.
 
+## Cross-site requests
+
+A state-changing request (anything but `GET`) carrying an `Origin` from another
+site is refused with 403. The Host allow-list stops DNS rebinding but not a
+plain cross-site form POST, which carries a legitimate Host header — this closes
+that. Same-origin requests either omit `Origin` or send a matching one, and the
+CLI sends none.
+
 ## Planned
 
-Export, provider management, cross-project run listing, and server-sent events
+Provider management over HTTP, cross-project run listing, and server-sent events
 replacing polling. See [../roadmap/status.md](../roadmap/status.md).

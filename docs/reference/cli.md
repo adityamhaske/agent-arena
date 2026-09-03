@@ -190,8 +190,39 @@ Permanently remove soft-deleted runs and reclaim the file space. `--dry-run`,
 
 Show which `.env` files were found, nearest last. **Values are never printed.**
 
+### `arena export --project <p>`
+
+Write a run to `csv`, `json`, `markdown` or `html`. `--run-id` (default: most
+recent), `--format`/`-f`, `--out`/`-o`, and `--all` for every run as one JSON
+document.
+
+The HTML export is a **single self-contained file** — no CDN, no script, opens
+offline. It is the one to send to someone who was not in the terminal.
+
+### `arena providers list|add|test|discover|rm`
+
+Manage connection profiles.
+
+```bash
+arena providers add work --kind openai --api-key '${env:OPENAI_API_KEY}'
+arena providers test work
+arena providers discover work
+arena providers rm work --purge-key
+```
+
+A literal `--api-key` is moved into your OS keyring; only the reference reaches
+`settings.json`.
+
+### `arena secrets set|get|rm <account>`
+
+Store, read and remove credentials. `get` prints `***` unless `--reveal`.
+`set` prompts when no `--value` is given, or reads stdin when piped.
+
+### `arena config get|set|reset [key]`
+
+Read and change user settings.
+
 ## Planned commands
 
-`export`, `secrets`, `providers`, `config`, `watch`, and
-`evaluate --resume` are designed but not built. See
+`watch` and `evaluate --resume` are designed but not built. See
 [../roadmap/status.md](../roadmap/status.md).

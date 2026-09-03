@@ -52,6 +52,7 @@ def client(tmp_path: Path):
             return response.status, raw
 
     call.root = root  # type: ignore[attr-defined]
+    call.port = port  # type: ignore[attr-defined]
     call.canary = tmp_path / "CANARY.txt"  # type: ignore[attr-defined]
     try:
         yield call
@@ -212,3 +213,61 @@ def test_vacuum_reports_what_it_would_remove(client):
 
     status, done = client("POST", "/api/projects/support_triage/vacuum")
     assert status == 200 and done["runs_removed"] == 1
+
+
+# --------------------------------------------------------------- cross-site
+
+
+def _raw(port: int, method: str, path: str, headers: dict) -> int:
+    from http.client import HTTPConnection
+
+    conn = HTTPConnection("127.0.0.1", port, timeout=10)
+    conn.request(method, path, b"{}", {"Content-Type": "application/json", **headers})
+    status = conn.getresponse().status
+    conn.close()
+    return status
+
+
+def test_a_cross_site_write_is_refused(client):
+    """The Host allow-list does not cover this: a cross-site form POST carries
+    a legitimate Host header. Without an Origin check the write still lands."""
+    status = _raw(
+        client.port,  # type: ignore[attr-defined]
+        "POST",
+        "/api/projects/support_triage/archive",
+        {"Origin": "https://evil.example"},
+    )
+    assert status == 403
+
+
+def test_a_same_origin_write_still_works(client):
+    status = _raw(
+        client.port,  # type: ignore[attr-defined]
+        "POST",
+        "/api/projects/support_triage/archive",
+        {"Origin": f"http://127.0.0.1:{client.port}"},  # type: ignore[attr-defined]
+    )
+    assert status == 200
+
+
+def test_a_request_with_no_origin_is_allowed(client):
+    # Browsers omit Origin on same-origin navigations, and the CLI sends none.
+    status = _raw(
+        client.port,  # type: ignore[attr-defined]
+        "POST",
+        "/api/projects/support_triage/archive",
+        {},
+    )
+    assert status == 200
+
+
+def test_a_cross_site_read_is_still_allowed(client):
+    # GET is not state-changing, and blocking it would break nothing useful
+    # while breaking ordinary navigation.
+    status = _raw(
+        client.port,  # type: ignore[attr-defined]
+        "GET",
+        "/api/projects",
+        {"Origin": "https://evil.example"},
+    )
+    assert status == 200

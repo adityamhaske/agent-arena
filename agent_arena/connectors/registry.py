@@ -37,6 +37,9 @@ CONNECTORS: dict[str, type[Connector]] = {
     "local": LocalConnector,
     "ollama": LocalConnector,
     "lmstudio": LocalConnector,
+    "openai_compatible": LocalConnector,
+    "vllm": LocalConnector,
+    "llamacpp": LocalConnector,
     "mock": MockConnector,
     "callable": CallableConnector,
     "pipeline": CallableConnector,
@@ -85,9 +88,20 @@ def register_connector(name: str, factory: Callable[..., Connector]) -> None:
     CONNECTORS[name] = factory  # type: ignore[assignment]
 
 
-def build_connector(spec: Any, defaults: dict[str, Any] | None = None) -> Connector:
-    """Instantiate the connector for one :class:`~agent_arena.core.config.ModelSpec`."""
-    provider = resolve_provider(spec, strict=True)
+def build_connector(
+    spec: Any,
+    defaults: dict[str, Any] | None = None,
+    profile: Any = None,
+) -> Connector:
+    """Instantiate the connector for one :class:`~agent_arena.core.config.ModelSpec`.
+
+    ``profile`` is the :class:`~agent_arena.core.config.ProviderSpec` the model
+    selected, when it selected one. It supplies the endpoint, the credential,
+    any extra headers, the TLS and proxy settings, and a model-id rewrite —
+    which together are what make two accounts on the same vendor, or a
+    corporate gateway, expressible at all.
+    """
+    provider = resolve_provider(spec, profile=profile, strict=True)
     factory = CONNECTORS.get(provider)
     if factory is None:
         raise ConnectorError(
@@ -96,7 +110,20 @@ def build_connector(spec: Any, defaults: dict[str, Any] | None = None) -> Connec
         )
 
     api_key = None
-    if spec.api_key_env:
+    if profile is not None and getattr(profile, "api_key_ref", None):
+        # A reference, never a literal — resolved here so no caller has to hold
+        # the raw value. Secret.reveal() is the only way to the string, and the
+        # SDK call below is the only place that happens.
+        from ..core.secrets import resolve as _resolve_secret  # noqa: PLC0415
+
+        secret = _resolve_secret(profile.api_key_ref, base_dir=getattr(spec, "base_dir", None))
+        if secret is None:
+            raise ConnectorError(
+                f"provider {profile.id!r} declares api_key={profile.api_key_ref!r} "
+                "but it resolves to nothing. Check the variable, file or keyring entry."
+            )
+        api_key = secret.reveal()
+    elif spec.api_key_env:
         api_key = os.environ.get(spec.api_key_env)
         if not api_key:
             raise ConnectorError(
@@ -106,7 +133,24 @@ def build_connector(spec: Any, defaults: dict[str, Any] | None = None) -> Connec
     elif provider in _API_KEY_ENVS:
         api_key = os.environ.get(_API_KEY_ENVS[provider])
 
-    params = {**(defaults or {}).get("params", {}), **spec.params}
+    model_id = spec.model
+    api_base = spec.api_base
+    transport: dict[str, Any] = {}
+    if profile is not None:
+        # The model entry still wins where it is explicit: a profile is a
+        # default for the connection, not an override of a deliberate choice.
+        api_base = api_base or getattr(profile, "base_url", None)
+        prefix = getattr(profile, "model_prefix", None)
+        if prefix and not model_id.startswith(prefix):
+            model_id = f"{prefix}{model_id}"
+        transport = {
+            "headers": dict(getattr(profile, "headers", {}) or {}),
+            "verify_tls": getattr(profile, "verify_tls", True),
+            "proxy": getattr(profile, "proxy", None),
+        }
+
+    profile_params = (getattr(profile, "params", None) or {}) if profile is not None else {}
+    params = {**(defaults or {}).get("params", {}), **profile_params, **spec.params}
     if provider == "callable":
         params["run"] = spec.run or spec.model
         params["base_dir"] = getattr(spec, "base_dir", None)
@@ -115,12 +159,16 @@ def build_connector(spec: Any, defaults: dict[str, Any] | None = None) -> Connec
         params.pop(reserved, None)
 
     try:
-        return factory(
-            model=spec.model,
+        connector = factory(
+            model=model_id,
             api_key=api_key,
-            api_base=spec.api_base,
+            api_base=api_base,
+            **transport,
             **params,
         )
+        if profile is not None and getattr(profile, "timeout_s", None):
+            connector.timeout_s = profile.timeout_s
+        return connector
     except ConnectorError:
         raise
     except TypeError as exc:
@@ -135,6 +183,10 @@ def build_connector(spec: Any, defaults: dict[str, Any] | None = None) -> Connec
 #: `provider: ollama` must find the same `local` card as a bare `llama3.2`.
 _PROVIDER_ALIASES = {
     "ollama": "local", "lmstudio": "local", "google": "gemini", "pipeline": "callable",
+    # Any OpenAI-shaped endpoint — a gateway, a self-hosted server — is served
+    # by the stdlib HTTP connector, which is the one that honours headers, a
+    # custom CA and a proxy.
+    "openai_compatible": "local", "vllm": "local", "llamacpp": "local",
 }
 
 
@@ -142,7 +194,7 @@ def canonical_provider(provider: str | None) -> str | None:
     return _PROVIDER_ALIASES.get(provider, provider) if provider else provider
 
 
-def resolve_provider(spec: Any, strict: bool = False) -> str | None:
+def resolve_provider(spec: Any, profile: Any = None, strict: bool = False) -> str | None:
     """The provider a model spec will use, without constructing a connector.
 
     Returns ``None`` rather than raising when the id is unrecognisable (unless
@@ -152,6 +204,10 @@ def resolve_provider(spec: Any, strict: bool = False) -> str | None:
         # A target names the callable to execute; nothing about the id can
         # override that.
         return "callable"
+    if profile is not None:
+        # A declared profile names its own kind; the model's `provider:` field
+        # was the reference that selected it, not a vendor name.
+        return canonical_provider(getattr(profile, "kind", None) or spec.provider)
     if getattr(spec, "provider", None):
         return canonical_provider(spec.provider)
     try:

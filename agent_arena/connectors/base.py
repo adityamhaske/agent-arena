@@ -94,16 +94,35 @@ class Connector(ABC):
     #: ignore it rather than pretending to enforce it.
     timeout_s: float | None = None
 
+    #: Extra HTTP headers a provider profile asked for — a gateway's routing
+    #: config, an organisation id. Empty for a plain vendor call.
+    headers: dict[str, str]
+
+    #: ``True`` to verify certificates normally, a path to use as a CA bundle,
+    #: or ``False`` to skip verification entirely. The last is occasionally
+    #: necessary against an internal endpoint and is never a good idea; the
+    #: caller is warned rather than silently protected.
+    verify_tls: bool | str = True
+
+    #: Proxy URL, when a profile routes through one.
+    proxy: str | None = None
+
     def __init__(
         self,
         model: str,
         api_key: str | None = None,
         api_base: str | None = None,
+        headers: dict[str, str] | None = None,
+        verify_tls: bool | str = True,
+        proxy: str | None = None,
         **params: Any,
     ) -> None:
         self.model = model
         self.api_key = api_key
         self.api_base = api_base
+        self.headers = dict(headers or {})
+        self.verify_tls = verify_tls
+        self.proxy = proxy
         self.params = params
 
     @abstractmethod

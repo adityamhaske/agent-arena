@@ -63,7 +63,7 @@ a leaderboard, the install is good.
 
 ```bash
 pip install -e ".[dev]"
-python3 -m pytest -q        # 526 passed in ~21s
+python3 -m pytest -q        # 574 passed in ~28s
 ```
 
 Use a **fresh** virtualenv if you want to verify the stdlib-only invariant. An

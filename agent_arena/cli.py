@@ -154,6 +154,54 @@ def build_parser() -> argparse.ArgumentParser:
     vacuum.add_argument("--dry-run", action="store_true")
     vacuum.add_argument("--yes", "-y", action="store_true")
 
+    providers_cmd = sub.add_parser("providers", help="manage connection profiles")
+    providers_sub = providers_cmd.add_subparsers(dest="action", metavar="action")
+    providers_sub.add_parser("list", help="show configured profiles")
+    p_add = providers_sub.add_parser("add", help="create or replace a profile")
+    p_add.add_argument("id")
+    p_add.add_argument("--kind", required=True)
+    p_add.add_argument("--base-url")
+    p_add.add_argument("--api-key", help="a ${...} reference, or a literal that goes to the keyring")
+    p_add.add_argument("--header", action="append", default=[], metavar="K=V")
+    p_add.add_argument("--model-prefix")
+    p_test = providers_sub.add_parser("test", help="check a profile can be reached")
+    p_test.add_argument("id")
+    p_disc = providers_sub.add_parser("discover", help="list the models an endpoint serves")
+    p_disc.add_argument("id")
+    p_rm = providers_sub.add_parser("rm", help="delete a profile")
+    p_rm.add_argument("id")
+    p_rm.add_argument("--purge-key", action="store_true", help="also remove its keyring entry")
+    p_rm.add_argument("--yes", "-y", action="store_true")
+
+    secrets_cmd = sub.add_parser("secrets", help="manage stored credentials")
+    secrets_sub = secrets_cmd.add_subparsers(dest="action", metavar="action")
+    s_set = secrets_sub.add_parser("set", help="store a credential")
+    s_set.add_argument("account")
+    s_set.add_argument("--value", help="read from stdin when omitted")
+    s_get = secrets_sub.add_parser("get", help="show a credential (masked by default)")
+    s_get.add_argument("account")
+    s_get.add_argument("--reveal", action="store_true", help="print the real value")
+    s_rm = secrets_sub.add_parser("rm", help="delete a credential")
+    s_rm.add_argument("account")
+
+    config_cmd = sub.add_parser("config", help="read or change user settings")
+    config_sub = config_cmd.add_subparsers(dest="action", metavar="action")
+    config_sub.add_parser("get", help="show settings")
+    c_set = config_sub.add_parser("set", help="change a setting")
+    c_set.add_argument("key")
+    c_set.add_argument("value")
+    c_reset = config_sub.add_parser("reset", help="restore defaults")
+    c_reset.add_argument("key", nargs="?")
+
+    export = sub.add_parser("export", help="write a run to csv, json, markdown or html")
+    add_project(export)
+    export.add_argument("--run-id", help="which run (default: most recent)")
+    export.add_argument("--format", "-f", default="html",
+                        choices=["csv", "json", "markdown", "html"])
+    export.add_argument("--out", "-o", default=".", help="file or directory to write to")
+    export.add_argument("--all", action="store_true",
+                        help="export every run as one JSON document instead")
+
     env_cmd = sub.add_parser("env", help="show which .env files were found (values redacted)")
     add_project(env_cmd)
 
@@ -762,6 +810,159 @@ def cmd_vacuum(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_providers(args: argparse.Namespace) -> int:
+    from .service import providers as svc  # noqa: PLC0415
+
+    action = getattr(args, "action", None) or "list"
+    if action == "list":
+        profiles = svc.user_providers()
+        if not profiles:
+            print("No provider profiles. Add one:")
+            print("  arena providers add work --kind openai --api-key '${env:OPENAI_API_KEY}'")
+            return 0
+        print(f"\n  {'id':16} {'kind':20} {'base url':38} key")
+        for profile in profiles:
+            print(
+                f"  {profile.id:16} {profile.kind:20} "
+                f"{(profile.base_url or '—')[:38]:38} {profile.api_key_ref or '—'}"
+            )
+        print()
+        return 0
+
+    if action == "add":
+        headers = {}
+        for item in args.header:
+            key, _, value = item.partition("=")
+            if not value:
+                print(f"error: --header must be KEY=VALUE, got {item!r}", file=sys.stderr)
+                return 1
+            headers[key.strip()] = value.strip()
+        profile = svc.save_provider(
+            {
+                "id": args.id, "kind": args.kind, "base_url": args.base_url,
+                "api_key": args.api_key, "headers": headers,
+                "model_prefix": args.model_prefix,
+            }
+        )
+        print(f"Saved provider {profile.id!r}.")
+        if args.api_key and not args.api_key.startswith("${"):
+            print(f"  The key went to your keyring; settings hold {profile.api_key_ref}")
+        return 0
+
+    if action == "test":
+        report = svc.health_check(svc.get_provider(args.id))
+        if report["ok"]:
+            print(f"OK — {report['models_endpoint']} responded in {report['latency_ms']}ms")
+            return 0
+        print(f"Unreachable — {report['error'] or report['status']}", file=sys.stderr)
+        return 1
+
+    if action == "discover":
+        models = svc.discover_models(svc.get_provider(args.id))
+        if not models:
+            print("No models reported. Many gateways do not implement /v1/models.")
+            return 0
+        for model in models:
+            print(f"  {model}")
+        return 0
+
+    if action == "rm":
+        plan = svc.delete_provider(args.id, purge_key=args.purge_key, dry_run=True)
+        print(f"\n  This removes provider {args.id!r}"
+              + (" and its stored key.\n" if args.purge_key else ".\n"))
+        if not _confirm(f"Delete provider {args.id!r}?", args.yes):
+            print("Cancelled.")
+            return 1
+        svc.delete_provider(args.id, purge_key=args.purge_key)
+        print(f"Deleted provider {args.id!r}.")
+        return 0
+
+    print("usage: arena providers list|add|test|discover|rm", file=sys.stderr)
+    return 1
+
+
+def cmd_secrets(args: argparse.Namespace) -> int:
+    from .service.providers import KEYRING_SERVICE  # noqa: PLC0415
+    from .service.secrets import keyring_delete, keyring_get, keyring_set  # noqa: PLC0415
+
+    action = getattr(args, "action", None)
+    if action == "set":
+        value = args.value
+        if not value:
+            if sys.stdin.isatty():
+                import getpass  # noqa: PLC0415
+
+                value = getpass.getpass(f"Value for {args.account}: ")
+            else:
+                value = sys.stdin.read().strip()
+        if not value:
+            print("error: no value given", file=sys.stderr)
+            return 1
+        keyring_set(KEYRING_SERVICE, args.account, value)
+        print(f"Stored. Reference it as ${{keyring:{KEYRING_SERVICE}/{args.account}}}")
+        return 0
+
+    if action == "get":
+        value = keyring_get(KEYRING_SERVICE, args.account)
+        if value is None:
+            print(f"No credential stored for {args.account!r}.", file=sys.stderr)
+            return 1
+        # Masked unless asked: this command gets run in shared terminals and
+        # pasted into issues.
+        print(value if args.reveal else "***")
+        return 0
+
+    if action == "rm":
+        removed = keyring_delete(KEYRING_SERVICE, args.account)
+        print("Deleted." if removed else "Nothing stored under that name.")
+        return 0 if removed else 1
+
+    print("usage: arena secrets set|get|rm <account>", file=sys.stderr)
+    return 1
+
+
+def cmd_config(args: argparse.Namespace) -> int:
+    import json as _json  # noqa: PLC0415
+
+    from .service import settings as svc  # noqa: PLC0415
+
+    action = getattr(args, "action", None) or "get"
+    if action == "get":
+        data = svc.load()
+        data.pop("providers", None)  # shown by `arena providers list`
+        print(_json.dumps(data, indent=2))
+        return 0
+    if action == "set":
+        raw = args.value
+        try:
+            value = _json.loads(raw)
+        except _json.JSONDecodeError:
+            value = raw  # a bare string is the common case
+        svc.save({args.key: value})
+        print(f"Set {args.key} = {value!r}")
+        return 0
+    if action == "reset":
+        svc.reset([args.key] if args.key else None)
+        print(f"Reset {args.key or 'all settings'}.")
+        return 0
+    print("usage: arena config get|set|reset", file=sys.stderr)
+    return 1
+
+
+def cmd_export(args: argparse.Namespace) -> int:
+    from .service import export as svc  # noqa: PLC0415
+
+    root = Path(args.project)
+    if args.all:
+        path = svc.export_all(root.parent, root.name, args.out)
+    else:
+        path = svc.export_run(root.parent, root.name, args.run_id, args.format, args.out)
+    print(f"Wrote {path}")
+    if args.format == "html" and not args.all:
+        print("  A single self-contained file — no network needed to read it.")
+    return 0
+
+
 def cmd_env(args: argparse.Namespace) -> int:
     from .core.env import find_env_files  # noqa: PLC0415
 
@@ -787,6 +988,10 @@ COMMANDS = {
     "duplicate": cmd_duplicate,
     "rm": cmd_rm,
     "vacuum": cmd_vacuum,
+    "export": cmd_export,
+    "providers": cmd_providers,
+    "secrets": cmd_secrets,
+    "config": cmd_config,
     "env": cmd_env,
     "run": cmd_evaluate,
     "report": cmd_report,

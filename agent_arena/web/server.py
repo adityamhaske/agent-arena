@@ -17,7 +17,7 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlsplit
 
 from ..core.errors import ArenaError
 from .api import ApiError, ArenaAPI
@@ -91,6 +91,7 @@ def build_routes(api: ArenaAPI) -> list[Route]:
             lambda name, run_id, body, **_: api.label_run(name, run_id, body),
         ),
         Route("POST", rf"/api/projects/{name}/vacuum", lambda name, query, **_: api.vacuum(name, query)),
+        Route("GET", rf"/api/projects/{name}/export", lambda name, query, **_: api.export_run(name, query)),
         Route("GET", r"/api/settings", lambda **_: api.settings()),
         Route("PUT", r"/api/settings", lambda body, **_: api.update_settings(body)),
     ]
@@ -113,6 +114,28 @@ class ArenaHandler(BaseHTTPRequestHandler):
         if getattr(self.server, "verbose", False):
             super().log_message(fmt, *args)
 
+    def _origin_allowed(self) -> bool:
+        """Reject a state-changing request that another site initiated.
+
+        The Host allow-list stops DNS rebinding, but it does not stop a plain
+        cross-site form POST: that carries a legitimate Host header. Absence of
+        CORS keeps an attacker from *reading* the reply, and this keeps them
+        from causing the write in the first place.
+
+        Same-origin requests either omit Origin (most browsers, on same-origin
+        navigations) or send one matching the host we are served under, so an
+        absent Origin is allowed and a foreign one is not.
+        """
+        origin = (self.headers.get("Origin") or "").strip()
+        if not origin:
+            fetch_site = (self.headers.get("Sec-Fetch-Site") or "").strip().lower()
+            return fetch_site in ("", "same-origin", "same-site", "none")
+        try:
+            hostname = urlsplit(origin).hostname or ""
+        except ValueError:
+            return False
+        return hostname.lower() in self.allowed_hosts
+
     def _host_allowed(self) -> bool:
         """Block DNS-rebinding: only the names we are actually served under.
 
@@ -120,7 +143,9 @@ class ArenaHandler(BaseHTTPRequestHandler):
         127.0.0.1 and drive this API from the user's browser.
         """
         host = (self.headers.get("Host") or "").split(":")[0].strip("[]").lower()
-        return not host or host in self.allowed_hosts
+        # A request with no Host header used to pass. HTTP/1.1 requires one, so
+        # its absence is a malformed request rather than a same-origin call.
+        return bool(host) and host in self.allowed_hosts
 
     def _send(self, status: int, body: bytes, content_type: str, extra: dict | None = None) -> None:
         self.send_response(status)
@@ -185,6 +210,12 @@ class ArenaHandler(BaseHTTPRequestHandler):
     def _dispatch(self, method: str) -> None:
         if not self._host_allowed():
             self._json(403, {"error": "This server only answers requests from localhost."})
+            return
+        if method != "GET" and not self._origin_allowed():
+            self._json(
+                403,
+                {"error": "This request came from another site, so it was refused."},
+            )
             return
 
         path, _, query_string = self.path.partition("?")

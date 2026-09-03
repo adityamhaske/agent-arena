@@ -107,7 +107,11 @@ for the same vendor can compete in one run, and a gateway can carry custom
 headers, a private CA and a model-prefix rewrite. `ProjectConfig.provider_for()`
 resolves a model to its profile.
 
-The config parses and profiles resolve today. **The runner does not yet route
-through a profile** — connector wiring is in progress. See
-[../guides/api-keys-and-gateways.md](../guides/api-keys-and-gateways.md) and
-[../roadmap/status.md](../roadmap/status.md).
+`build_connector(spec, defaults, profile=...)` applies it: the profile supplies
+the endpoint, the credential (resolved from its reference, so no caller holds
+the raw value), extra headers, the TLS context, a proxy, a timeout, and a
+model-id prefix rewrite. The model entry still wins where it is explicit — a
+profile is a default for the connection, not an override of a deliberate choice.
+
+Per-provider rate limits parse but are not yet enforced. See
+[../guides/api-keys-and-gateways.md](../guides/api-keys-and-gateways.md).

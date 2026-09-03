@@ -646,6 +646,18 @@ class ArenaAPI:
 
         return svc.vacuum(self.projects_dir, name, dry_run=_flag((query or {}).get("dry_run")))
 
+    def export_run(self, name: str, query: dict[str, Any] | None = None) -> dict[str, Any]:
+        from ..service import export as svc  # noqa: PLC0415
+
+        query = query or {}
+        config = self._load(name)
+        path = svc.export_run(
+            self.projects_dir, name,
+            query.get("run_id"), query.get("format", "html"),
+            config.results_dir / "exports",
+        )
+        return {"path": str(path), "format": query.get("format", "html")}
+
     def settings(self) -> dict[str, Any]:
         from ..service import settings as svc  # noqa: PLC0415
 

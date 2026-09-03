@@ -605,8 +605,11 @@ class ArenaRunner:
     # ---- collaborators ------------------------------------------------
 
     def _connector_for(self, spec: ModelSpec):
-        connector = build_connector(spec, self.config.defaults)
-        connector.timeout_s = self.config.run.timeout_s
+        profile = self.config.provider_for(spec)
+        connector = build_connector(spec, self.config.defaults, profile=profile)
+        # A profile's own timeout, when it set one, has already been applied.
+        if connector.timeout_s is None:
+            connector.timeout_s = self.config.run.timeout_s
         return connector
 
     def _judge(self, prompt: str, system: str | None = None) -> str:

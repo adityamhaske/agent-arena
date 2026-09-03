@@ -1,11 +1,10 @@
 # API keys and gateways
 
-> **Status.** The `providers:` block parses and profiles resolve — that is tested
-> in `tests/test_config_providers.py`. **The runner does not yet route through a
-> profile**, so headers, custom CAs, proxies and model-prefix rewriting are not
-> applied to a live call, and secret references are not yet consumed by a run.
-> Today, credentials come from environment variables. This guide documents both,
-> and says which is which. See [../roadmap/status.md](../roadmap/status.md).
+> **Status.** Provider profiles route for real: the endpoint, credential,
+> headers, TLS setting, proxy, timeout and model-prefix rewrite are all applied
+> to a live call, asserted against a recording server in
+> `tests/test_provider_routing.py`. Per-provider *rate limits* parse but are not
+> yet enforced. See [../roadmap/status.md](../roadmap/status.md).
 
 ## Today: environment variables
 
@@ -28,7 +27,7 @@ models:
 A model whose key is missing is **skipped, not failed** — the run continues and
 the leaderboard reports the skip with its reason.
 
-## Working today: `.env` parsing
+## `.env` files
 
 `agent_arena/core/env.py` is complete and tested. It reads
 `~/.config/agent-arena/.env` and a project `.env`, with real environment
@@ -41,10 +40,10 @@ export ANTHROPIC_API_KEY="sk-ant-..."   # `export` prefix is accepted
 # comments and blank lines are fine
 ```
 
-**It is not yet wired into `cli.main()`**, so it has no effect on a real run yet.
-`.env` is already in `.gitignore`.
+Loaded in `cli.main()` before any command reads a credential. `.env` is already
+in `.gitignore`.
 
-## Designed: named provider profiles
+## Named provider profiles
 
 The capability this exists for: **two API keys for the same vendor in one run**,
 which v1 could not express at all.
@@ -101,10 +100,10 @@ handles it. Only an id declared in `providers:` changes resolution. Every config
 written before this block existed behaves identically, asserted for all four
 example projects.
 
-## Designed: secret references
+## Secret references
 
-Never a literal key in config. `service/secrets.py` is complete and tested; **it
-is not yet called by any command or by the runner**.
+Never a literal key in config. The connector registry resolves the reference
+when it builds the connection, so no caller ever holds the raw value.
 
 | Scheme | Resolves from |
 |---|---|
@@ -116,10 +115,31 @@ is not yet called by any command or by the runner**.
 Resolved keys are wrapped in `Secret`, whose `repr` and `str` are `***`. See
 [../security/secrets.md](../security/secrets.md).
 
-## What to do now
+## Managing profiles from the CLI
 
-1. Use environment variables. That is the path that works end to end.
-2. Use `api_key_env` when you need two accounts today — a per-model variable is
-   the v1 way to do what profiles will do properly.
-3. Keep literal keys out of config regardless. A config snapshot is stored with
-   every run, so a key in config also lands in your results database.
+```bash
+arena providers add work --kind openai --api-key '${env:OPENAI_API_KEY}'
+arena providers add gw --kind openai_compatible \
+    --base-url https://gateway.corp.internal/v1 \
+    --api-key 'sk-...' --header 'X-Portkey-Config=cfg_abc'
+arena providers list
+arena providers test gw          # can we reach it, and how fast
+arena providers discover gw      # what models does it serve
+arena providers rm gw --purge-key
+```
+
+A **literal** key passed to `providers add` is moved into your OS keyring and
+only the reference is written to `settings.json`. That file is mode 0600 and
+never holds a credential.
+
+```bash
+arena secrets set my-account     # prompts, or reads stdin
+arena secrets get my-account     # prints *** unless --reveal
+arena secrets rm my-account
+```
+
+## Keep literal keys out of config
+
+A config snapshot is stored with every run, so a key pasted into `config.yaml`
+also lands in your results database and in any export of it. Exports scrub
+anything key-shaped on the way out, but the database still has it.

@@ -35,7 +35,7 @@ Last updated for the commit that added the run and project lifecycle.
 | `evaluate` / `run`, with `--models --trials --tags --ids --limit --dry-run --fail-under --json` | Shipped |
 | `report`, `history`, `init`, `models`, `scorers`, `tests`, `validate`, `ui` | Shipped |
 | `projects`, `runs`, `rm`, `duplicate`, `archive`, `vacuum`, `label`, `env` | Shipped |
-| `export`, `secrets`, `providers`, `config` | Planned |
+| `export`, `secrets`, `providers`, `config` | Shipped |
 | `watch` | Planned |
 | `--resume` | Planned |
 
@@ -65,13 +65,14 @@ Last updated for the commit that added the run and project lifecycle.
 | Capability | Status | Notes |
 |---|---|---|
 | API keys from environment variables | Shipped | |
-| `providers:` block parses; profiles resolve | **Partial** | `ProjectConfig.provider_for()` works and is tested. **The runner does not route through a profile** — headers, custom CA, proxy and model-prefix rewriting are not yet applied to a call |
+| `providers:` routing | Shipped | The runner resolves a profile and applies its endpoint, credential, headers, TLS setting, proxy, timeout and model-prefix rewrite. Two accounts on one vendor compete in one run |
 | `budgets:` enforced during a run | Shipped | `max_run_usd` and `max_model_usd` stop the sweep; `on_exceed: warn` does not |
-| Secret references `${env:}` `${keyring:}` `${file:}` `${cmd:}` | **Partial** | `service/secrets.py` is complete and tested. **Nothing calls it yet** — no CLI command and no runner path |
-| OS keyring storage | **Partial** | Implemented; not reachable from any command |
+| Secret references `${env:}` `${keyring:}` `${file:}` `${cmd:}` | Shipped | Resolved by the connector registry when a profile declares one; `arena secrets` manages them |
+| OS keyring storage | Shipped | `arena secrets set/get/rm`; a literal key typed into `arena providers add` is moved into the key store and only the reference is persisted |
 | `.env` loading | Shipped | Loaded in `cli.main()` before any command; real environment variables win |
 | User settings at `~/.config/agent-arena` | **Partial** | `service/settings.py` is complete; nothing reads it |
 | Per-provider rate limits | Planned | Parsed, never applied |
+| User settings surface | Shipped | `arena config get/set/reset`, and `GET`/`PUT /api/settings` |
 
 The pattern in that table is worth stating plainly: the v2 foundation is built
 and tested, and almost none of it is *connected*. The wiring — CLI commands, HTTP
@@ -88,8 +89,8 @@ routes, and runner integration — is the next piece of work.
 | `service/projects.py` — list, describe, duplicate, archive, delete | Shipped |
 | `service/runs.py` — list, get, delete, restore, archive, label, vacuum | Shipped |
 | Store schema v2 — soft delete, migration runner | Shipped |
-| `service/providers.py` — profile CRUD, health check, discovery | Planned |
-| `service/export.py` — CSV/JSON/markdown/HTML | Planned |
+| `service/providers.py` — profile CRUD, health check, discovery | Shipped |
+| `service/export.py` — CSV/JSON/markdown/HTML | Shipped |
 
 ## Project health
 
@@ -102,7 +103,7 @@ routes, and runner integration — is the next piece of work.
 | PyPI release workflow with wheel verification | Shipped |
 | **Published to PyPI** | **Not yet** — the workflow is configured; no release has been tagged. Install from source |
 | Documentation site | Shipped |
-| 526 tests, offline, ~21s | Shipped |
+| 574 tests, offline, ~28s | Shipped |
 
 ## Statistics
 
@@ -124,13 +125,16 @@ routes, and runner integration — is the next piece of work.
 
 ## If you only remember one thing
 
-**Provider profiles and secret references still do not affect a real run.**
-`providers:` parses, profiles resolve, and `${env:}` / `${keyring:}` /
-`${file:}` / `${cmd:}` all work and are tested — but the runner does not yet
-route a call through a profile, so headers, a custom CA, a proxy and
-model-prefix rewriting are not applied, and credentials still come from
-environment variables. That is the last large gap between what the code
-contains and what the product does.
+**The engine and the CLI are feature-complete for 2.0; the browser UI is not.**
 
-Everything else on the "not usable" list has closed. Delete, cancellation and
-budget enforcement all work end to end, from both the CLI and the HTTP API.
+Everything the v2 plan called a gap in the engine has closed: delete,
+cancellation, budget enforcement, provider routing, secret references, export.
+All of it works from the CLI and the HTTP API, and all of it is tested.
+
+What has not been built is the *interface* on top: the sidenav shell, the
+settings pages, and the per-case run detail view. The API those pages would
+call exists — `GET`/`PUT /api/settings`, the delete and export routes, job
+cancellation — but the eight-route hash-based UI does not use any of it yet.
+
+Two smaller things remain in the engine: `evaluate --resume`, and the
+statistics work (confidence intervals, paired comparison, power analysis).

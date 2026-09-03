@@ -28,3 +28,7 @@ class ConnectorError(ArenaError):
 
 class HookError(ArenaError):
     """A project-defined hook could not be loaded or raised while running."""
+
+
+class SecretError(ArenaError):
+    """A credential reference is malformed, unreadable, or unsafe to use."""

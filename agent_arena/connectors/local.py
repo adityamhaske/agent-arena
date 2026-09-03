@@ -59,11 +59,41 @@ class LocalConnector(Connector):
             base = f"{base}/v1"
         return f"{base}/chat/completions"
 
+    def _opener(self) -> Any:
+        """A urllib opener honouring the profile's TLS and proxy settings.
+
+        Built per call rather than cached: a connector is shared across worker
+        threads, and an opener is not documented as thread-safe to construct.
+        """
+        handlers: list[Any] = []
+        if self.proxy:
+            handlers.append(urllib.request.ProxyHandler({"http": self.proxy, "https": self.proxy}))
+        context = self._ssl_context()
+        if context is not None:
+            handlers.append(urllib.request.HTTPSHandler(context=context))
+        # Always a real opener: the urllib.request module exposes urlopen, not
+        # open, so returning the module would break every caller.
+        return urllib.request.build_opener(*handlers)
+
+    def _ssl_context(self):
+        if self.verify_tls is True:
+            return None
+        import ssl  # noqa: PLC0415 — only needed for a non-default TLS setup
+
+        if self.verify_tls is False:
+            # Deliberately loud: anything on the path can now read the prompts
+            # and the API key. A profile has to ask for this explicitly.
+            context = ssl.create_default_context()
+            context.check_hostname = False
+            context.verify_mode = ssl.CERT_NONE
+            return context
+        return ssl.create_default_context(cafile=str(self.verify_tls))
+
     def healthcheck(self) -> str | None:
         """Confirm something is listening and knows about this model."""
         models_url = self.endpoint.replace("/chat/completions", "/models")
         try:
-            with urllib.request.urlopen(models_url, timeout=5.0) as response:  # noqa: S310
+            with self._opener().open(models_url, timeout=5.0) as response:
                 catalog = json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError:
             # Something is listening but has no /v1/models route (llama.cpp
@@ -116,7 +146,7 @@ class LocalConnector(Connector):
         payload.update(extra)
 
         body = json.dumps(payload).encode("utf-8")
-        headers = {"Content-Type": "application/json"}
+        headers = {"Content-Type": "application/json", **self.headers}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
@@ -126,7 +156,7 @@ class LocalConnector(Connector):
 
         started = time.perf_counter()
         try:
-            with urllib.request.urlopen(  # noqa: S310
+            with self._opener().open(
                 http_request, timeout=self.timeout_s or 120.0
             ) as response:
                 data = json.loads(response.read().decode("utf-8"))

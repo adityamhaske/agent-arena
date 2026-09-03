@@ -1,6 +1,6 @@
 # Testing
 
-**526 tests, 12 seconds, fully offline, no API key, no provider SDK.**
+**574 tests, 12 seconds, fully offline, no API key, no provider SDK.**
 
 That combination is a feature, not an accident. A suite you can run on every save
 removes every excuse not to run it, and one that needs no credentials means a
@@ -8,7 +8,7 @@ contributor's first `pytest` succeeds instead of erroring on a missing key.
 
 ```bash
 pip install -e ".[dev]"
-python3 -m pytest -q          # 526 passed in ~21s
+python3 -m pytest -q          # 574 passed in ~28s
 ```
 
 | Page | Covers |

@@ -26,7 +26,7 @@ from pathlib import Path
 import pytest
 
 from agent_arena.connectors import registry
-from agent_arena.service.errors import ServiceError
+from agent_arena.core.errors import SecretError
 from agent_arena.service.secrets import (
     Secret,
     provider_env,
@@ -103,7 +103,7 @@ def test_blank_and_none_references_resolve_to_nothing():
 
 
 def test_an_unknown_scheme_names_the_ones_that_work():
-    with pytest.raises(ServiceError) as exc:
+    with pytest.raises(SecretError) as exc:
         resolve("${vault:secret/data/openai}")
     message = str(exc.value)
     assert "vault" in message
@@ -128,7 +128,7 @@ def test_file_reference_reads_and_strips(tmp_path):
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX permission bits")
 def test_a_world_readable_key_file_is_refused_with_the_fix_in_the_message(tmp_path):
     key = _write_key(tmp_path / "openai", 0o644)
-    with pytest.raises(ServiceError) as exc:
+    with pytest.raises(SecretError) as exc:
         resolve(f"${{file:{key}}}")
     message = str(exc.value)
     assert str(key) in message
@@ -166,25 +166,25 @@ def test_cmd_never_reaches_a_shell(tmp_path):
     ref = f'${{cmd:{sys.executable} -c "print(1)" ; touch {canary}}}'
     try:
         resolve(ref)
-    except ServiceError:
+    except SecretError:
         pass  # refusing outright is also a correct outcome
     assert not canary.exists()
 
 
 def test_a_failing_command_reports_its_stderr():
-    with pytest.raises(ServiceError) as exc:
+    with pytest.raises(SecretError) as exc:
         resolve(f'${{cmd:{sys.executable} -c "import sys; sys.exit(3)"}}')
     assert "3" in str(exc.value)
 
 
 def test_a_command_that_is_not_installed_says_so():
-    with pytest.raises(ServiceError) as exc:
+    with pytest.raises(SecretError) as exc:
         resolve("${cmd:definitely-not-a-real-binary-xyz read thing}")
     assert "PATH" in str(exc.value)
 
 
 def test_an_empty_command_is_rejected():
-    with pytest.raises(ServiceError):
+    with pytest.raises(SecretError):
         resolve("${cmd:   }")
 
 

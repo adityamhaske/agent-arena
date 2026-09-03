@@ -51,16 +51,19 @@ that spend money.
 - `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`.
 - No CORS headers are sent, so a cross-origin `fetch` cannot read responses.
 
-**What it does not do, stated plainly.**
+- Any non-`GET` request carrying an `Origin` from another site is refused with
+  403. The rebinding allow-list does not cover a plain cross-site form POST,
+  which carries a legitimate `Host` header; this does. Requests with no
+  `Origin` — same-origin navigations, and the CLI — are allowed, and
+  `Sec-Fetch-Site` is consulted when present.
+- A request with **no `Host` header is refused**. HTTP/1.1 requires one, so its
+  absence is a malformed request rather than a same-origin call.
 
-- **There is no CSRF token and no `Origin`/`Sec-Fetch-Site` check.** A
-  cross-site form POST carries a legitimate `Host` header, so the rebinding
-  allow-list does not cover it. Absence of CORS stops an attacker *reading* the
-  response, but a state-changing POST can still fire.
-- **A request with no `Host` header passes**, because `not host` short-circuits
-  the check.
-
-Both are known gaps rather than oversights, and both are on the hardening list.
+**What it still does not do.** There is no per-request CSRF *token*. The
+`Origin` check is the mitigation, and it depends on the browser sending that
+header correctly — which every browser in support has done for years, but it is
+a weaker guarantee than a token bound to a session. A session would require
+authentication, which this tool deliberately does not have.
 
 ### A process on the same host
 
@@ -118,7 +121,8 @@ tunnel: see [hardening.md](hardening.md).
 
 | Guard | Where | Protects against |
 |---|---|---|
-| Host allow-list | `server.py::_host_allowed` | DNS rebinding |
+| Host allow-list | `server.py::_host_allowed` | DNS rebinding, and a missing Host header |
+| Origin check on writes | `server.py::_origin_allowed` | Cross-site state-changing requests |
 | CSP, nosniff, no-referrer | `server.py::_send` | Injected markup, MIME confusion, referrer leakage |
 | Static path containment | `server.py::_serve_static` | Path traversal to arbitrary files |
 | `MAX_BODY_BYTES` (8 MB) | `server.py::_read_body` | Memory-exhaustion via a large body |

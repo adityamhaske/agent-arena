@@ -92,7 +92,7 @@ Two conventions bind everything in the layer:
 
 ```bash
 pip install -e ".[dev]"
-pytest -q                                              # 526 tests, all offline
+pytest -q                                              # 574 tests, all offline
 
 arena validate --project projects/support_triage
 arena evaluate --project projects/support_triage --quiet --no-report
