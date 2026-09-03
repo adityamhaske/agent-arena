@@ -484,6 +484,9 @@ pip install -r site/requirements.txt
 python site/build.py && python -m http.server -d site/_build 8000
 ```
 
+- **[Documentation map](docs/README.md)** — the full tree: architecture, security, design, testing, reference, guides, operations, roadmap
+- **[Quickstart](docs/guides/quickstart.md)** — a leaderboard in 60 seconds, no API key
+- **[What actually works yet](docs/roadmap/status.md)** — shipped, partial or planned, per capability
 - **[Universal Arena guide](docs/UNIVERSAL_ARENA.md)** — full reference for the arena
 - **[Demo](demo.md)** — end-to-end walkthrough with local models and real output
 - **[Sample report](docs/EXAMPLE_REPORT.md)** — what the arena produces
