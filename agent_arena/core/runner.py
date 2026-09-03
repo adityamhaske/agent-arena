@@ -8,6 +8,7 @@ project-specific logic whatsoever — everything it does is decided by the
 
 from __future__ import annotations
 
+import random
 import subprocess
 import threading
 import time
@@ -25,6 +26,7 @@ from .config import ModelSpec, ProjectConfig, load_config
 from .errors import ArenaError, ConfigError, ScorerError
 from .hooks import HookSet
 from .metrics import Leaderboard, build_leaderboard
+from .retry import classify, retry_after_seconds, sleep_for
 from .store import ResultStore
 from .testcase import TestCase, load_test_cases
 
@@ -145,6 +147,9 @@ class ArenaRunner:
         self._owns_store = store is None
         self._judge_connector = None
         self._judge_lock = threading.Lock()
+        # One generator for the whole run rather than the module-level `random`,
+        # so a caller that seeds this runner gets reproducible backoff.
+        self._rng = random.Random()
 
         if test_cases is None:
             test_cases = load_test_cases(
@@ -508,6 +513,11 @@ class ArenaRunner:
         return result
 
     def _generate_with_retries(self, connector: Any, request: GenerationRequest):
+        """Call the model, retrying only what a retry could actually fix.
+
+        Returns ``(generation, error, attempts)``; ``generation`` is ``None``
+        when every attempt failed.
+        """
         last_error = ""
         attempts = 0
         for attempt in range(self.config.run.retries + 1):
@@ -516,8 +526,19 @@ class ArenaRunner:
                 return connector.generate(request), None, attempts
             except Exception as exc:  # noqa: BLE001 — provider errors are data here
                 last_error = f"{type(exc).__name__}: {exc}"
+                # A bad key or a malformed request fails the same way every
+                # time, so retrying only makes the user wait to hear it.
+                if not classify(exc).should_retry:
+                    break
                 if attempt < self.config.run.retries:
-                    time.sleep(self.config.run.retry_backoff_s * (2**attempt))
+                    time.sleep(
+                        sleep_for(
+                            attempt,
+                            self.config.run.retry_backoff_s,
+                            retry_after_seconds(exc),
+                            self._rng,
+                        )
+                    )
         return None, last_error, attempts
 
     # ---- collaborators ------------------------------------------------

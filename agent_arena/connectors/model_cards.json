@@ -1,5 +1,5 @@
 {
-  "as_of": "2026-06-24",
+  "as_of": "2026-09-02",
   "currency": "USD",
   "note": [
     "Prices are per million tokens for first-party APIs. This catalog ships only",
@@ -13,12 +13,40 @@
     "whether training opt-out applies, and whether zero-data-retention is enabled",
     "are properties of YOUR contract and platform, not of the model. Declare them",
     "in your project's pricing file. The one exception is a documented model-level",
-    "restriction, recorded below as an explicit false."
+    "restriction, recorded below as an explicit false.",
+    "",
+    "Every figure here is the published pay-as-you-go LIST price for the model's",
+    "own first-party API, in USD per million tokens, as of the `as_of` date. It is",
+    "not your price. Volume and committed-use discounts, the batch and cached-token",
+    "rates, and resale through Bedrock / Vertex / OpenRouter all differ, and vendors",
+    "reprice often — several models below have been repriced more than once inside a",
+    "year. Verify against the provider's current price list before you make a",
+    "purchasing decision on these numbers.",
+    "",
+    "Models whose current list price could not be confirmed are absent on purpose.",
+    "Absent means no cost metric, which is the honest answer; a plausible-looking",
+    "guess would quietly corrupt the comparison it was added to help."
   ],
   "aliases": {
     "claude-opus-latest": "claude-opus-5",
     "claude-sonnet-latest": "claude-sonnet-5",
-    "claude-haiku-latest": "claude-haiku-4-5"
+    "claude-haiku-latest": "claude-haiku-4-5",
+    "gpt-5-2025-08-07": "gpt-5",
+    "gpt-5-mini-2025-08-07": "gpt-5-mini",
+    "gpt-4.1-2025-04-14": "gpt-4.1",
+    "gpt-4.1-mini-2025-04-14": "gpt-4.1-mini",
+    "gpt-4o-2024-08-06": "gpt-4o",
+    "gpt-4o-2024-11-20": "gpt-4o",
+    "gpt-4o-mini-2024-07-18": "gpt-4o-mini",
+    "o3-2025-04-16": "o3",
+    "o4-mini-2025-04-16": "o4-mini",
+    "models/gemini-2.5-pro": "gemini-2.5-pro",
+    "models/gemini-2.5-flash": "gemini-2.5-flash",
+    "models/gemini-2.0-flash": "gemini-2.0-flash",
+    "gemini-2.0-flash-001": "gemini-2.0-flash",
+    "mistral/mistral-large-latest": "mistral-large-latest",
+    "mistral/mistral-small-latest": "mistral-small-latest",
+    "mistral-large-2411": "mistral-large-latest"
   },
   "models": {
     "claude-fable-5": {
@@ -219,6 +247,243 @@
         "batch"
       ],
       "notes": "Extended thinking uses budget_tokens; no effort parameter."
+    },
+    "gpt-5": {
+      "provider": "openai",
+      "display_name": "GPT-5",
+      "input_usd_per_mtok": 1.25,
+      "output_usd_per_mtok": 10.0,
+      "cache_read_usd_per_mtok": 0.125,
+      "context_tokens": 400000,
+      "max_output_tokens": 128000,
+      "features": [
+        "function_calling",
+        "structured_outputs",
+        "vision",
+        "streaming",
+        "prompt_caching",
+        "batch",
+        "adaptive_thinking",
+        "effort"
+      ],
+      "notes": "Reasoning effort is a request parameter (minimal through high) and reasoning tokens bill at the output rate. Prompt caching is automatic, so there is a cache-read rate but no cache-write charge."
+    },
+    "gpt-5-mini": {
+      "provider": "openai",
+      "display_name": "GPT-5 mini",
+      "input_usd_per_mtok": 0.25,
+      "output_usd_per_mtok": 2.0,
+      "cache_read_usd_per_mtok": 0.025,
+      "context_tokens": 400000,
+      "max_output_tokens": 128000,
+      "features": [
+        "function_calling",
+        "structured_outputs",
+        "vision",
+        "streaming",
+        "prompt_caching",
+        "batch",
+        "adaptive_thinking",
+        "effort"
+      ],
+      "notes": "Same request surface as GPT-5 at a lower tier."
+    },
+    "gpt-4.1": {
+      "provider": "openai",
+      "display_name": "GPT-4.1",
+      "input_usd_per_mtok": 2.0,
+      "output_usd_per_mtok": 8.0,
+      "cache_read_usd_per_mtok": 0.5,
+      "context_tokens": 1047576,
+      "max_output_tokens": 32768,
+      "features": [
+        "function_calling",
+        "structured_outputs",
+        "vision",
+        "streaming",
+        "prompt_caching",
+        "batch",
+        "long_context"
+      ],
+      "notes": "Not a reasoning model: no thinking budget and no effort parameter, so it fails a gate that requires them."
+    },
+    "gpt-4.1-mini": {
+      "provider": "openai",
+      "display_name": "GPT-4.1 mini",
+      "input_usd_per_mtok": 0.4,
+      "output_usd_per_mtok": 1.6,
+      "cache_read_usd_per_mtok": 0.1,
+      "context_tokens": 1047576,
+      "max_output_tokens": 32768,
+      "features": [
+        "function_calling",
+        "structured_outputs",
+        "vision",
+        "streaming",
+        "prompt_caching",
+        "batch",
+        "long_context"
+      ]
+    },
+    "gpt-4o": {
+      "provider": "openai",
+      "display_name": "GPT-4o",
+      "input_usd_per_mtok": 2.5,
+      "output_usd_per_mtok": 10.0,
+      "cache_read_usd_per_mtok": 1.25,
+      "context_tokens": 128000,
+      "max_output_tokens": 16384,
+      "features": [
+        "function_calling",
+        "structured_outputs",
+        "vision",
+        "streaming",
+        "prompt_caching",
+        "batch"
+      ],
+      "notes": "Priced for the 2024-08-06 snapshot onward. The 2024-05-13 snapshot bills at the older, higher rate and is deliberately not aliased to this card."
+    },
+    "gpt-4o-mini": {
+      "provider": "openai",
+      "display_name": "GPT-4o mini",
+      "input_usd_per_mtok": 0.15,
+      "output_usd_per_mtok": 0.6,
+      "cache_read_usd_per_mtok": 0.075,
+      "context_tokens": 128000,
+      "max_output_tokens": 16384,
+      "features": [
+        "function_calling",
+        "structured_outputs",
+        "vision",
+        "streaming",
+        "prompt_caching",
+        "batch"
+      ]
+    },
+    "o3": {
+      "provider": "openai",
+      "display_name": "OpenAI o3",
+      "input_usd_per_mtok": 2.0,
+      "output_usd_per_mtok": 8.0,
+      "cache_read_usd_per_mtok": 0.5,
+      "context_tokens": 200000,
+      "max_output_tokens": 100000,
+      "features": [
+        "function_calling",
+        "structured_outputs",
+        "vision",
+        "streaming",
+        "prompt_caching",
+        "batch",
+        "adaptive_thinking",
+        "effort"
+      ],
+      "notes": "Reflects the June 2025 reduction from 10.00 / 40.00; older quotes for o3 are the pre-cut price. Reasoning tokens bill at the output rate, so cost per answer runs well above the headline rate."
+    },
+    "o4-mini": {
+      "provider": "openai",
+      "display_name": "OpenAI o4-mini",
+      "input_usd_per_mtok": 1.1,
+      "output_usd_per_mtok": 4.4,
+      "cache_read_usd_per_mtok": 0.275,
+      "context_tokens": 200000,
+      "max_output_tokens": 100000,
+      "features": [
+        "function_calling",
+        "structured_outputs",
+        "vision",
+        "streaming",
+        "prompt_caching",
+        "batch",
+        "adaptive_thinking",
+        "effort"
+      ],
+      "notes": "Reasoning tokens bill at the output rate."
+    },
+    "gemini-2.5-pro": {
+      "provider": "gemini",
+      "display_name": "Gemini 2.5 Pro",
+      "input_usd_per_mtok": 1.25,
+      "output_usd_per_mtok": 10.0,
+      "context_tokens": 1048576,
+      "max_output_tokens": 65536,
+      "features": [
+        "function_calling",
+        "structured_outputs",
+        "vision",
+        "streaming",
+        "prompt_caching",
+        "batch",
+        "adaptive_thinking",
+        "long_context"
+      ],
+      "notes": "Pricing is tiered by prompt length: this is the rate for prompts up to 200k tokens, above which it becomes 2.50 / 15.00. A run that regularly exceeds 200k tokens is under-costed by this card — override it. No cache rate is recorded because context caching is billed per token AND per hour of storage, which this schema cannot express."
+    },
+    "gemini-2.5-flash": {
+      "provider": "gemini",
+      "display_name": "Gemini 2.5 Flash",
+      "input_usd_per_mtok": 0.3,
+      "output_usd_per_mtok": 2.5,
+      "context_tokens": 1048576,
+      "max_output_tokens": 65536,
+      "features": [
+        "function_calling",
+        "structured_outputs",
+        "vision",
+        "streaming",
+        "prompt_caching",
+        "batch",
+        "adaptive_thinking",
+        "long_context"
+      ],
+      "notes": "The thinking budget is a request parameter and can be set to zero; thinking tokens bill at the output rate either way. Context caching is billed separately, so no cache rate is recorded."
+    },
+    "gemini-2.0-flash": {
+      "provider": "gemini",
+      "display_name": "Gemini 2.0 Flash",
+      "input_usd_per_mtok": 0.1,
+      "output_usd_per_mtok": 0.4,
+      "context_tokens": 1048576,
+      "max_output_tokens": 8192,
+      "features": [
+        "function_calling",
+        "structured_outputs",
+        "vision",
+        "streaming",
+        "prompt_caching",
+        "batch",
+        "long_context"
+      ],
+      "notes": "Text and image input rate. Audio input is billed higher and this card does not model it."
+    },
+    "mistral-large-latest": {
+      "provider": "mistral",
+      "display_name": "Mistral Large",
+      "input_usd_per_mtok": 2.0,
+      "output_usd_per_mtok": 6.0,
+      "context_tokens": 131072,
+      "features": [
+        "function_calling",
+        "structured_outputs",
+        "streaming",
+        "batch"
+      ],
+      "notes": "La Plateforme pricing for Mistral Large 24.11. Text only — Pixtral is the vision model — and there is no prompt-caching rate on the list price. Self-hosting under Mistral's commercial licence is priced separately and is not this number."
+    },
+    "mistral-small-latest": {
+      "provider": "mistral",
+      "display_name": "Mistral Small",
+      "input_usd_per_mtok": 0.1,
+      "output_usd_per_mtok": 0.3,
+      "context_tokens": 131072,
+      "features": [
+        "function_calling",
+        "structured_outputs",
+        "vision",
+        "streaming",
+        "batch"
+      ],
+      "notes": "La Plateforme pricing for the Mistral Small 3.x line. The weights are Apache-2.0, so a self-hosted copy costs nothing per token — use the `local` card for that, not this one."
     },
     "local": {
       "provider": "local",

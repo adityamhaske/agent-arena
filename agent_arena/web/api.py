@@ -88,13 +88,24 @@ class ApiError(ArenaError):
 # ---------------------------------------------------------------------------
 
 
+#: A finished job is kept so the browser can still poll it and re-open its
+#: results, but `arena ui` is a long-running process: without a cap, every
+#: evaluation would leak a Job and its buffered feed for the life of the
+#: server. Fifty is far more history than any view shows.
+MAX_RETAINED_JOBS = 50
+
+#: A job in one of these states still has a thread behind it, so its id is the
+#: only handle the browser has on a run that may be spending money.
+LIVE_STATUSES = ("starting", "running")
+
+
 class Job:
     """One evaluation running in a thread, pollable from the browser."""
 
     def __init__(self, job_id: str, project: str) -> None:
         self.id = job_id
         self.project = project
-        self.status = "starting"  # starting | running | done | error
+        self.status = "starting"  # starting | running | done | error | cancelled
         self.completed = 0
         self.planned = 0
         self.started_at = time.time()
@@ -105,7 +116,18 @@ class Job:
         self.run_id: str | None = None
         self.payload: dict[str, Any] | None = None
         self.recent: list[dict[str, Any]] = []
+        self.cancel_event = threading.Event()
         self._lock = threading.Lock()
+
+    def cancel(self) -> None:
+        """Ask the run to stop.
+
+        Cooperative, not a kill: only the loop making the calls can stop
+        *spending*, and tearing its thread down mid-write would leave the
+        results store half-populated. The flag is an Event so the runner can
+        wait on it as well as poll it.
+        """
+        self.cancel_event.set()
 
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
@@ -129,6 +151,9 @@ class Job:
                 "run_id": self.run_id,
                 "recent": list(self.recent),
                 "result": self.payload,
+                # A cancelled run keeps reporting progress until the runner
+                # notices, so the UI needs to know the stop was asked for.
+                "cancel_requested": self.cancel_event.is_set(),
             }
 
     def on_event(self, event: dict[str, Any]) -> None:
@@ -159,6 +184,12 @@ class Job:
 
 
 class JobManager:
+    """Every run this process has started, oldest first.
+
+    Insertion order is the retention order: dicts keep it, which is why the
+    eviction below needs no timestamps and no background thread.
+    """
+
     def __init__(self) -> None:
         self._jobs: dict[str, Job] = {}
         self._by_project: dict[str, str] = {}
@@ -168,7 +199,7 @@ class JobManager:
         with self._lock:
             job_id = self._by_project.get(project)
             job = self._jobs.get(job_id) if job_id else None
-        return job if job and job.status in ("starting", "running") else None
+        return job if job and job.status in LIVE_STATUSES else None
 
     def get(self, job_id: str) -> Job:
         with self._lock:
@@ -177,14 +208,42 @@ class JobManager:
             raise ApiError(f"no such run: {job_id}", status=404)
         return job
 
+    def cancel(self, job_id: str) -> Job:
+        job = self.get(job_id)  # raises the 404 before anything is touched
+        job.cancel()
+        return job
+
     def start(self, project: str, target) -> Job:
         job = Job(uuid.uuid4().hex[:12], project)
         with self._lock:
             self._jobs[job.id] = job
             self._by_project[project] = job.id
+            self._forget_old_jobs()
         thread = threading.Thread(target=target, args=(job,), daemon=True)
         thread.start()
         return job
+
+    def _forget_old_jobs(self) -> None:
+        """Drop the oldest finished jobs once more than the cap are held.
+
+        The caller holds the lock, so this is the whole of the cleanup: no
+        timer, no reaper thread, no dependency. A live job is never dropped —
+        its id is the browser's only handle on a run, and losing it would also
+        let a second run start against the same project and spend twice.
+        """
+        finished = [
+            job_id
+            for job_id, job in self._jobs.items()
+            if job.status not in LIVE_STATUSES
+        ]
+        if len(finished) <= MAX_RETAINED_JOBS:
+            return
+        for job_id in finished[: len(finished) - MAX_RETAINED_JOBS]:
+            job = self._jobs.pop(job_id)
+            # Otherwise the index outlives the job it names, and `active_for`
+            # keeps answering for a project whose run is gone.
+            if self._by_project.get(job.project) == job_id:
+                del self._by_project[job.project]
 
 
 # ---------------------------------------------------------------------------
@@ -484,6 +543,8 @@ class ArenaAPI:
 
         def target(job: Job) -> None:
             try:
+                # Cancellation plumbs in here as cancel_event=job.cancel_event,
+                # once ArenaRunner accepts it; today it does not.
                 runner = ArenaRunner.from_project(
                     config.root, progress=job.on_event, **overrides
                 )
@@ -505,6 +566,15 @@ class ArenaAPI:
 
     def job_status(self, job_id: str) -> dict[str, Any]:
         return self.jobs.get(job_id).snapshot()
+
+    def cancel_run(self, job_id: str) -> dict[str, Any]:
+        """Stop a run that should not have been started.
+
+        A misconfigured sweep against a paid API is the one thing the browser
+        must be able to interrupt; the snapshot comes back so the page can say
+        the stop was asked for before the run actually winds down.
+        """
+        return self.jobs.cancel(job_id).snapshot()
 
     # ---- results -------------------------------------------------------
 

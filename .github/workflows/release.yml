@@ -1,0 +1,146 @@
+name: Release
+
+# Publishing goes through PyPI Trusted Publishing (OIDC): PyPI verifies a
+# short-lived token that GitHub mints for this workflow run. There is no API
+# token in repo secrets, so there is nothing here to leak, rotate, or scope
+# wrong — and a fork cannot publish, because the identity is this repository.
+#
+# It does need a one-time setup before the first release, and until it is done
+# the publish step fails with `invalid-publisher`, not with anything about
+# tokens. On PyPI (and again on TestPyPI, for the dry run) add a trusted
+# publisher for this repository with workflow `release.yml` and environment
+# `pypi`.
+
+on:
+  push:
+    # Only a real version tag releases. See the Releasing section of AGENTS.md
+    # for the steps that come before the tag.
+    tags: ["v*.*.*"]
+  # A manual run is a dry run: it builds, verifies, and publishes to TestPyPI,
+  # so the release path can be exercised without burning a version number.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  # Never cancel a run that may be halfway through an upload.
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build the distributions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install the build frontend
+        run: pip install build
+
+      - name: Build the sdist and the wheel
+        run: python -m build
+
+      # Every later job consumes exactly these files. Nothing is rebuilt, so
+      # what gets verified is what gets published.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  verify:
+    name: the wheel is self-contained
+    needs: build
+    runs-on: ubuntu-latest
+
+    # This job is the point of the workflow. The engine is stdlib-only, so an
+    # import failure is unlikely; what does break a release here is package
+    # data — `templates/` and `web/static/` are ordinary files that setuptools
+    # ships only because pyproject.toml lists them, and a wheel missing them
+    # installs and imports perfectly while `arena init` and the UI are dead.
+    #
+    # There is deliberately NO checkout step. With the repo absent, `import
+    # agent_arena` can only resolve to the installed wheel, so a file that
+    # rode along on the source tree instead of in the distribution cannot
+    # quietly pass this job.
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Install the wheel into a clean venv
+        run: |
+          python -m venv /tmp/venv
+          /tmp/venv/bin/pip install dist/*.whl
+
+      - name: The console script exists
+        run: /tmp/venv/bin/arena --version
+
+      # Listing the scorers walks the registry, which means the package and
+      # its subpackages all imported — with only PyYAML installed alongside.
+      - name: The package imports with no provider SDK present
+        run: /tmp/venv/bin/arena scorers
+
+      # `arena init` copies agent_arena/templates/ out of the installed
+      # package; a pip-installed arena has no repo to fall back on. Evaluating
+      # the result offline proves the scaffold is complete, not just present.
+      - name: A scaffolded project runs offline from the wheel alone
+        run: |
+          /tmp/venv/bin/arena init /tmp/scaffold --name wheel_check
+          /tmp/venv/bin/arena evaluate --project /tmp/scaffold --quiet --no-report
+
+      # The browser UI is served off disk at request time, so the static files
+      # have to be inside the installed package. Missing, they produce a 404
+      # at runtime rather than an error anywhere near the release.
+      - name: The browser UI shipped too
+        run: |
+          static=$(/tmp/venv/bin/python -c \
+            "import agent_arena, pathlib; print(pathlib.Path(agent_arena.__file__).parent / 'web' / 'static')")
+          for f in index.html app.js app.css; do
+            test -f "$static/$f" || { echo "MISSING from the wheel: web/static/$f"; exit 1; }
+          done
+          echo "UI static files present in $static"
+
+  publish:
+    name: publish
+    needs: [build, verify]
+    runs-on: ubuntu-latest
+
+    # Named so the release can be gated in Settings → Environments → pypi
+    # (required reviewers, tag restrictions). PyPI's trusted publisher must
+    # name this same environment.
+    environment: pypi
+
+    permissions:
+      # The whole credential. `id-token: write` lets the job ask GitHub for
+      # the OIDC token that PyPI trades for a short-lived upload token.
+      id-token: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      # A tag push is the only thing that reaches the real index.
+      - name: Publish to PyPI
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+      # The dry run: same artifact, same OIDC flow, harmless index.
+      - name: Publish to TestPyPI
+        if: github.event_name == 'workflow_dispatch'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/

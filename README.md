@@ -1,9 +1,101 @@
 # Agent Arena
 
+[![CI](https://img.shields.io/github/actions/workflow/status/adityamhaske/agent-arena/ci.yml?branch=main&label=CI)](https://github.com/adityamhaske/agent-arena/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/agent-arena)](https://pypi.org/project/agent-arena/)
+![Python 3.10 – 3.13](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)
+[![License MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 **[adityamhaske.github.io/agent-arena](https://adityamhaske.github.io/agent-arena)** — documentation site
 
-Two independent evaluation systems that share a philosophy — **structured
-evidence over vibes** — and answer opposite questions about LLM systems.
+## What this is
+
+Agent Arena tells you which LLM — or which whole pipeline — to ship for one
+specific job, and what that choice costs. You describe the job in two YAML files:
+the cases it has to get right, and what *best* means to you — how much you care
+about accuracy versus price versus speed, plus the floors you will not go below.
+It runs every candidate against those cases and prints a ranked, costed
+leaderboard, with anything that broke a hard constraint disqualified and the
+failing number shown. It is for the engineer who has to defend a model choice to
+a budget, a latency target, or a colleague, and cannot do that with a public
+benchmark run on somebody else's task.
+
+## Quickstart
+
+No API key, no account, no network. The example projects ship with deterministic
+`mock:` models, so the first run works out of the box.
+
+```bash
+git clone https://github.com/adityamhaske/agent-arena
+cd agent-arena
+pip install -e .          # engine only; add [anthropic], [openai], [gemini], [all]
+arena evaluate --project projects/support_triage
+```
+
+```
+  #  model         id             composite  accuracy  cost   latency  status
+  1  sim_small     mock:small     0.853      83.3%     $0.06  190ms    ranked
+  2  sim_frontier  mock:frontier  0.750      97.6%     $0.30  1,500ms  ranked
+  3  sim_balanced  mock:balanced  0.744      85.7%     $0.18  620ms    ranked
+  -  sim_tiny      mock:tiny      —          50.0%     $0.02  90ms     DISQUALIFIED
+
+  Winner: sim_small  (accuracy 83.3%, cost $0.06, latency 190ms)
+  ✗ sim_tiny: accuracy 50.0% below the required 70.0%
+```
+
+Note the winner is not the most accurate model. At this volume, with these
+weights, the small one wins — and that is the entire point of the tool.
+
+Two more commands worth knowing on day one:
+
+```bash
+arena ui                           # the same engine in a browser, on localhost:8420
+arena init projects/my_project     # scaffold your own: config.yaml + tests.yaml
+```
+
+Then: [how the arena works](#1-universal-arena) ·
+[your own project](#your-own-project) ·
+[full reference](docs/UNIVERSAL_ARENA.md)
+
+## Compared to other eval tools
+
+Agent Arena is small and opinionated, and the established tools beat it on
+breadth. Reach for one of them when you want:
+
+| Tool | Stronger when you need |
+|---|---|
+| **[promptfoo](https://promptfoo.dev)** | A large assertion and scorer library, red-teaming and jailbreak suites, and a wide integration ecosystem. |
+| **[LangSmith](https://www.langchain.com/langsmith)** | Hosted tracing of a *running* application, datasets curated from live traffic, and human annotation queues. |
+| **[Braintrust](https://www.braintrust.dev)** | A team-scale hosted platform: experiment diffing, logging, review workflows, shared history. |
+| **[Inspect](https://inspect.aisi.org.uk)** | Research-grade evals — solvers, sandboxed agentic tool use, model-graded scoring at scale. |
+
+What this repo does that they do not, all of it visible in the code here:
+
+- **Hard constraints disqualify rather than rank low.** `constraints:` in
+  `config.yaml` moves a model to `DISQUALIFIED` with the failing number printed.
+  A leaderboard that ranks an unusable model 4th is lying to you.
+- **It will not dress a coin flip as a result.** When the top two are within
+  0.02 the report says the margin is inside the noise for a sweep this size —
+  and says whether more *trials* or more *cases* would actually separate them.
+- **Stdlib only, with one optional dependency.** PyYAML, and JSON config works
+  without even that. No account, no server, no build step; the browser UI is
+  `http.server` plus vanilla JS.
+- **Genuinely offline.** Deterministic `mock:` models with fixed accuracy,
+  latency and price let you prove your scorers and weights behave before you
+  spend anything.
+- **A pipeline ranks beside a plain model.** A `run:` target — any callable — is
+  scored, priced and constrained on the same leaderboard as a single API call,
+  so *should we add the critic step?* becomes the same question as *should we use
+  the bigger model?*
+
+It is deliberately not a hosted platform, has no dashboard beyond a localhost
+page, and does not trace inside a running production system. If that is what you
+need, one of the four above is the right answer.
+
+## Why two projects, and why they belong together
+
+This repo holds two independent evaluation systems that share a philosophy —
+**structured evidence over vibes** — and answer opposite questions about LLM
+systems.
 
 | | Question it answers | What varies | What is held fixed | Where |
 |---|---|---|---|---|
@@ -11,8 +103,6 @@ evidence over vibes** — and answer opposite questions about LLM systems.
 | **Multi-agent study** | Does splitting a task across agents lose information at the handoff? | The architecture | The model, the task | `studies/multi_agent_handoff/` — [its README](studies/multi_agent_handoff/README.md) |
 
 They share no code. Zero imports cross between them.
-
-## Why two projects, and why they belong together
 
 Any claim about an LLM system is a claim about one of two variables, and most
 evaluations quietly confound them. When a multi-agent pipeline fails, was it the
@@ -104,33 +194,12 @@ The arena inverts that. It knows nothing about any task:
 | `projects/doc_extraction/` | Example 2 — structured JSON extraction, offline |
 | `projects/local_demo/` | Example 3 — models on your own machine |
 | `projects/pipeline_demo/` | Example 4 — comparing multi-agent architectures, offline |
-| `tests/` | 282 tests covering the engine, targets and the UI |
+| `tests/` | 378 tests covering the engine, targets and the UI |
 
 ## How to use it
 
-```bash
-pip install -e .          # engine only; add [anthropic], [openai], [gemini], [all]
-```
-
-Run an example to see a real leaderboard immediately — no API key needed:
-
-```bash
-arena evaluate --project projects/support_triage
-```
-
-```
-  #  model         id             composite  accuracy  cost   latency  status
-  1  sim_small     mock:small     0.853      83.3%     $0.06  190ms    ranked
-  2  sim_frontier  mock:frontier  0.750      97.6%     $0.30  1,500ms  ranked
-  3  sim_balanced  mock:balanced  0.744      85.7%     $0.18  620ms    ranked
-  -  sim_tiny      mock:tiny      —          50.0%     $0.02  90ms     DISQUALIFIED
-
-  Winner: sim_small  (accuracy 83.3%, cost $0.06, latency 190ms)
-  ✗ sim_tiny: accuracy 50.0% below the required 70.0%
-```
-
-Note the winner is not the most accurate model. At this volume, with these
-weights, the small one wins — and that is the entire point of the tool.
+Install and the first leaderboard are in the [Quickstart](#quickstart) above.
+Everything below is what comes after that first run.
 
 ### Without a terminal
 
@@ -395,7 +464,7 @@ grader will tell you whether a failure was coordination or capability.
 agent_arena/                    the installable engine  ─┐
 agent_arena/web/                the browser UI (`arena ui`)│
 projects/                       example + your projects  ├─ Universal Arena
-tests/                          282 engine + UI tests    │
+tests/                          378 engine + UI tests    │
 demo/  demo.md                  local-model walkthrough ─┘
 
 studies/multi_agent_handoff/    the frozen study (code, docs, committed sweep)
@@ -422,3 +491,28 @@ python site/build.py && python -m http.server -d site/_build 8000
 - **[Releases](CHANGELOG.md)** — what shipped in each version, and which interfaces semver covers
 - **[Roadmap](docs/ROADMAP_10X.md)** — where this goes next, and what it deliberately will not become
 - **[Decisions (ADRs)](docs/DECISIONS.md)** — why trace formats, retry strategy, failure injection, and the config-driven design are what they are. The **System** column says which project each decision governs.
+
+## Contributing
+
+Issues and pull requests are welcome. Start with the invariants — there are six
+of them, and breaking one is a bug rather than a trade-off.
+
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** — setup, what CI checks, and the bar a
+  change has to clear
+- **[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)** — how people are expected to
+  behave here
+- **[SECURITY.md](SECURITY.md)** — how to report a vulnerability privately
+- **[AGENTS.md](AGENTS.md)** — the working notes: the invariants themselves, the
+  release steps, and the rules the documentation site depends on
+
+Before you push:
+
+```bash
+pip install -e ".[dev]"
+pytest -q                                                 # 378 tests, offline, ~12s
+arena validate --project projects/support_triage
+arena evaluate --project projects/support_triage --quiet --no-report
+```
+
+CI runs that suite on Python 3.10–3.13 with no provider SDK installed, plus every
+example project end to end.
