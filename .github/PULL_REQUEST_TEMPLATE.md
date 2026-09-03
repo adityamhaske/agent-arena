@@ -21,7 +21,7 @@ python3 -m pytest -q
 
 ## Checklist
 
-- [ ] `python3 -m pytest -q` is green — **282 passed** or more, and no test was
+- [ ] `python3 -m pytest -q` is green — **472 passed** or more, and no test was
       skipped, disabled or quarantined to get there.
 - [ ] **No new dependency.** Nothing added to `pyproject.toml`'s `dependencies`,
       nothing added to `agent_arena/web/` (no npm, no CDN, no build step), and

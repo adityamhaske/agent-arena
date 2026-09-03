@@ -37,12 +37,56 @@ do not add one.
    second code path and no plugin system to extend.
 6. **The example projects are documentation.** They run offline in CI. If they
    stop validating or running, the docs are lying.
+7. **The dependency arrow points one way.** `agent_arena/service/` may import
+   from `core/`, `connectors/` and `scorers/`. It may **never** import from
+   `agent_arena/web/`, and nothing in it knows about HTTP status codes,
+   argparse namespaces, or printing. This is what lets the CLI and the browser
+   share one implementation instead of two that drift.
+8. **A credential is never a `str`.** Resolved keys are wrapped in
+   `service.secrets.Secret`, whose `__repr__` and `__str__` return `***`.
+   `.reveal()` is the only way out, and its name is deliberately greppable. No
+   function may return a secret *value* in a dict — only the reference string,
+   because those dicts get serialised onto the wire and into reports.
+9. **Config additions are additive.** A `config.yaml` written before a block
+   existed must keep loading and behaving identically. `providers:` and
+   `budgets:` both default to empty, and `provider_for()` returns `None` for a
+   bare vendor kind so v1 routing is untouched. The example projects are the
+   canaries: CI runs all four end to end.
+
+## Where a new capability goes
+
+Put it in `agent_arena/service/`, then let the CLI and the browser API call it.
+
+```
+   arena CLI            web/api.py            import agent_arena
+        └────────────────────┼────────────────────┘
+                             ▼
+                    agent_arena/service/
+       secrets · settings · providers · projects · runs · export
+                             │
+   config · runner · metrics · store · connectors · scorers   (core/)
+```
+
+The rule that keeps this honest: **nothing may be UI-only.** Before this layer
+existed, project creation lived inside `web/api.py`, so the UI could scaffold a
+project the CLI could not reach — and neither could delete one. If you add a
+verb to the browser without adding it here, you have rebuilt that problem.
+
+Two conventions bind everything in the layer:
+
+- **Every destructive function takes `dry_run: bool = False` and returns the
+  same plan dict either way.** One code path, one branch at the end. If the
+  plan and the execution can diverge, the confirmation dialog is lying about
+  what is going to happen.
+- **Caller-supplied names are hostile.** A project name or run id arriving from
+  HTTP is untrusted input. Resolve the path and prove it is inside the
+  directory you meant before unlinking anything.
 
 ## Before you push
 
 ```bash
 pip install -e ".[dev]"
-pytest -q                                              # 282 tests, all offline
+pytest -q                                              # 472 tests, all offline
 
 arena validate --project projects/support_triage
 arena evaluate --project projects/support_triage --quiet --no-report

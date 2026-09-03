@@ -32,6 +32,15 @@ BUILTIN_METRICS = {
 
 NORMALIZE_MODES = ("minmax", "target", "budget", "raw")
 
+#: What to do when a run walks through its budget ceiling.
+BUDGET_ACTIONS = ("stop", "warn")
+
+#: A profile may also name a generic OpenAI-compatible endpoint. That is not
+#: a connector of its own — it is the ``local`` HTTP connector pointed at a
+#: ``base_url`` — but it is what people call these gateways, so it is spelled
+#: the way they will write it.
+OPENAI_COMPATIBLE = "openai_compatible"
+
 
 def _as_dict(value: Any, where: str) -> dict:
     if value is None:
@@ -121,6 +130,183 @@ class ModelSpec:
             card=_as_dict(raw.get("card"), f"{where}.card"),
             enabled=bool(raw.get("enabled", True)),
         )
+
+
+def _provider_kinds() -> set[str]:
+    """The connector kinds a provider profile is allowed to name.
+
+    Read at call time rather than imported at module scope: a host application
+    can add a connector with ``register_connector`` after import, and a config
+    naming that connector must still parse.
+    """
+    from ..connectors.registry import CONNECTORS
+
+    return set(CONNECTORS) | {OPENAI_COMPATIBLE}
+
+
+@dataclass
+class ProviderSpec:
+    """A named endpoint profile: *where* a model call goes, and *how*.
+
+    In v1 the endpoint was described inline on every model entry (``api_base``,
+    ``api_key_env``), which makes the three things people actually need
+    impossible: two API keys for the same vendor in one run, a corporate
+    gateway wanting custom headers and a private CA, and a rate limit that
+    belongs to an endpoint rather than to a model. A profile is declared once
+    under ``providers:`` and referenced by ``id`` from any number of models.
+
+    Declaring nothing keeps v1 behaviour exactly. A model with no ``provider:``
+    — or with a bare vendor kind like ``provider: anthropic`` — is routed by
+    the connector registry the way it always was.
+    """
+
+    id: str
+    """The name a model references in its ``provider:`` field."""
+
+    kind: str
+    """Which connector speaks this endpoint's protocol: ``openai``,
+    ``anthropic``, ``local``, ``openai_compatible``, …"""
+
+    base_url: str | None = None
+    """Endpoint root. ``None`` means the vendor's own default."""
+
+    api_key_ref: str | None = None
+    """A *reference* to a credential (``env:OPENAI_API_KEY``), never a value.
+    Resolving it belongs to :mod:`agent_arena.service.secrets`, not here."""
+
+    headers: dict[str, str] = field(default_factory=dict)
+    """Extra HTTP headers — the corporate-gateway case (a tenant id, a
+    routing tag) that no vendor SDK has a field for."""
+
+    timeout_s: float | None = None
+    """Per-request ceiling for this endpoint, overriding ``run.timeout_s``."""
+
+    verify_tls: bool | str = True
+    """``True``, ``False``, or a path to a CA bundle for a private authority.
+
+    ``False`` turns certificate checking off entirely. Nothing in this module
+    warns about that, deliberately — this dataclass only parses. Whoever opens
+    the connection owns telling the user their traffic is unverified.
+    """
+
+    proxy: str | None = None
+    """Proxy URL for this endpoint alone, so one gateway can go through a
+    corporate proxy while the rest of the run does not."""
+
+    model_prefix: str | None = None
+    """Prepended to the model id on the way out, for gateways that namespace
+    their catalog (``team-a/gpt-4o``)."""
+
+    rate_limit: dict[str, Any] = field(default_factory=dict)
+    """``rpm`` / ``tpm`` / ``concurrency``. Unknown keys pass through so a
+    connector can read its own knob without a change here."""
+
+    retry: dict[str, Any] = field(default_factory=dict)
+    """``attempts`` / ``backoff_s`` / ``jitter`` / ``respect_retry_after``."""
+
+    params: dict[str, Any] = field(default_factory=dict)
+    """Extra client kwargs, merged the way ``ModelSpec.params`` is."""
+
+    @classmethod
+    def parse(cls, raw: Any, index: int) -> ProviderSpec:
+        where = f"providers[{index}]"
+        raw = _as_dict(raw, where)
+
+        identifier = raw.get("id") or raw.get("name")
+        if not identifier:
+            raise ConfigError(
+                f"{where} needs an 'id' — that is the name models reference. "
+                "Example:\n  providers:\n    - id: openai_prod\n      kind: openai"
+            )
+        identifier = str(identifier)
+
+        kinds = _provider_kinds()
+        kind = raw.get("kind") or raw.get("type")
+        if not kind:
+            raise ConfigError(
+                f"{where} ({identifier!r}) needs a 'kind' saying which connector "
+                f"speaks to it. Valid kinds: {', '.join(sorted(kinds))}"
+            )
+        kind = str(kind)
+        if kind not in kinds:
+            raise ConfigError(
+                f"{where} ({identifier!r}): unknown kind {kind!r}. "
+                f"Valid kinds: {', '.join(sorted(kinds))}"
+            )
+
+        # `api_key:` is what somebody writes in YAML; `api_key_ref:` is what it
+        # means. Both hold a reference, never a literal credential.
+        api_key_ref = _first_not_none(raw, ("api_key_ref", "api_key"))
+
+        verify = _first_not_none(raw, ("verify_tls", "verify"))
+        if verify is None:
+            verify = True
+        if not isinstance(verify, (bool, str)):
+            raise ConfigError(
+                f"{where}.verify_tls must be true, false, or a path to a CA "
+                f"bundle, got {verify!r}"
+            )
+
+        timeout_s = _opt_float(raw.get("timeout_s"), f"{where}.timeout_s")
+        if timeout_s is not None and timeout_s <= 0:
+            raise ConfigError(
+                f"{where}.timeout_s must be > 0; omit it to inherit run.timeout_s"
+            )
+
+        rate_limit = _as_dict(raw.get("rate_limit"), f"{where}.rate_limit")
+        for name in ("rpm", "tpm", "concurrency"):
+            value = _opt_float(rate_limit.get(name), f"{where}.rate_limit.{name}")
+            if value is not None and value <= 0:
+                raise ConfigError(
+                    f"{where}.rate_limit.{name} must be > 0; "
+                    "omit it to mean 'no limit'"
+                )
+
+        retry = _as_dict(raw.get("retry"), f"{where}.retry")
+        for name in ("attempts", "backoff_s"):
+            value = _opt_float(retry.get(name), f"{where}.retry.{name}")
+            if value is not None and value < 0:
+                raise ConfigError(f"{where}.retry.{name} must be >= 0, got {value!r}")
+
+        return cls(
+            id=identifier,
+            kind=kind,
+            base_url=_opt_str(_first_not_none(raw, ("base_url", "api_base"))),
+            api_key_ref=_opt_str(api_key_ref),
+            headers={
+                str(k): str(v)
+                for k, v in _as_dict(raw.get("headers"), f"{where}.headers").items()
+            },
+            timeout_s=timeout_s,
+            verify_tls=verify,
+            proxy=_opt_str(raw.get("proxy")),
+            model_prefix=_opt_str(raw.get("model_prefix")),
+            rate_limit=rate_limit,
+            retry=retry,
+            params=_as_dict(raw.get("params"), f"{where}.params"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """A JSON-safe view of the profile, for API responses and diffs.
+
+        This never carries a secret VALUE. ``api_key_ref`` is the reference the
+        user wrote and resolution happens elsewhere, at the point of use — a
+        resolved key placed here would travel straight into a browser.
+        """
+        return {
+            "id": self.id,
+            "kind": self.kind,
+            "base_url": self.base_url,
+            "api_key_ref": self.api_key_ref,
+            "headers": dict(self.headers),
+            "timeout_s": self.timeout_s,
+            "verify_tls": self.verify_tls,
+            "proxy": self.proxy,
+            "model_prefix": self.model_prefix,
+            "rate_limit": dict(self.rate_limit),
+            "retry": dict(self.retry),
+            "params": dict(self.params),
+        }
 
 
 @dataclass
@@ -316,6 +502,54 @@ class Constraints:
         )
 
 
+@dataclass
+class BudgetSettings:
+    """What a run may spend before the harness stops or merely complains.
+
+    Every amount is optional and ``None`` means "no ceiling" — which is what a
+    config with no ``budgets:`` block gets, so nothing changes for one. This is
+    parsed intent only; enforcement belongs to whoever is spending the money.
+    """
+
+    max_run_usd: float | None = None
+    """Ceiling for the whole run, across every model in it."""
+
+    max_model_usd: float | None = None
+    """Ceiling for any single model, so one runaway entry cannot eat the run."""
+
+    confirm_above_usd: float | None = None
+    """Estimated cost above which an interface should ask before starting."""
+
+    on_exceed: str = "stop"
+    """``stop`` (default) or ``warn``. Stopping is the default because the
+    surprising part of an evaluation should never be the bill."""
+
+    @classmethod
+    def parse(cls, raw: Any) -> BudgetSettings:
+        raw = _as_dict(raw, "budgets")
+        settings = cls(
+            max_run_usd=_opt_float(raw.get("max_run_usd"), "budgets.max_run_usd"),
+            max_model_usd=_opt_float(raw.get("max_model_usd"), "budgets.max_model_usd"),
+            confirm_above_usd=_opt_float(
+                raw.get("confirm_above_usd"), "budgets.confirm_above_usd"
+            ),
+            on_exceed=str(raw.get("on_exceed", "stop")),
+        )
+        for name in ("max_run_usd", "max_model_usd", "confirm_above_usd"):
+            amount = getattr(settings, name)
+            if amount is not None and amount < 0:
+                raise ConfigError(
+                    f"budgets.{name} must be >= 0, got {amount!r}; "
+                    "remove the key to mean 'no ceiling'"
+                )
+        if settings.on_exceed not in BUDGET_ACTIONS:
+            raise ConfigError(
+                f"budgets.on_exceed must be one of {', '.join(BUDGET_ACTIONS)}, "
+                f"got {settings.on_exceed!r}"
+            )
+        return settings
+
+
 def _first_not_none(block: dict[str, Any], keys: tuple[str, ...]) -> Any:
     for key in keys:
         if block.get(key) is not None:
@@ -332,6 +566,10 @@ def _opt_float(value: Any, where: str) -> float | None:
         raise ConfigError(f"{where} must be a number, got {value!r}") from exc
 
 
+def _opt_str(value: Any) -> str | None:
+    return None if value is None else str(value)
+
+
 @dataclass
 class ProjectConfig:
     """The parsed, validated contents of a project folder's config file."""
@@ -341,10 +579,12 @@ class ProjectConfig:
     config_path: Path | None = None
     description: str = ""
     models: list[ModelSpec] = field(default_factory=list)
+    providers: list[ProviderSpec] = field(default_factory=list)
     defaults: dict[str, Any] = field(default_factory=dict)
     run: RunSettings = field(default_factory=RunSettings)
     metrics: MetricSettings = field(default_factory=MetricSettings)
     constraints: Constraints = field(default_factory=Constraints)
+    budgets: BudgetSettings = field(default_factory=BudgetSettings)
     test_paths: list[str] = field(default_factory=list)
     test_filter: dict[str, Any] = field(default_factory=dict)
     scorer_paths: list[str] = field(default_factory=list)
@@ -377,6 +617,23 @@ class ProjectConfig:
     @property
     def enabled_models(self) -> list[ModelSpec]:
         return [m for m in self.models if m.enabled]
+
+    def provider_for(self, spec: ModelSpec) -> ProviderSpec | None:
+        """The declared endpoint profile a model uses, if it names one.
+
+        ``None`` is not a failure — it is the v1 answer, and it is what keeps
+        every config written before ``providers:`` existed working unchanged.
+        A model with no ``provider:``, or with a bare vendor kind such as
+        ``provider: anthropic``, resolves to ``None`` so the connector registry
+        routes it exactly as it does today.
+        """
+        if not spec.provider:
+            return None
+        wanted = str(spec.provider)
+        for profile in self.providers:
+            if profile.id == wanted:
+                return profile
+        return None
 
     # ---- construction -------------------------------------------------
 
@@ -411,6 +668,14 @@ class ProjectConfig:
                 )
             seen[model.key] = 1
 
+        # Additive by design: a config with neither block gets an empty profile
+        # list and budgets that gate nothing, which is v1 behaviour exactly.
+        providers = [
+            ProviderSpec.parse(entry, i)
+            for i, entry in enumerate(_as_list(data.get("providers"), "providers"))
+        ]
+        budgets = BudgetSettings.parse(data.get("budgets"))
+
         tests_block = data.get("tests")
         if isinstance(tests_block, list):
             test_paths, test_filter = [str(p) for p in tests_block], {}
@@ -437,10 +702,12 @@ class ProjectConfig:
             config_path=Path(config_path) if config_path else None,
             description=str(data.get("description", "")),
             models=models,
+            providers=providers,
             defaults=_as_dict(data.get("defaults"), "defaults"),
             run=RunSettings.parse(data.get("run")),
             metrics=MetricSettings.parse(data.get("metrics")),
             constraints=Constraints.parse(data.get("constraints")),
+            budgets=budgets,
             test_paths=test_paths,
             test_filter=test_filter,
             scorer_paths=[
@@ -498,6 +765,31 @@ class ProjectConfig:
     # ---- validation ---------------------------------------------------
 
     def validate(self) -> None:
+        declared: dict[str, ProviderSpec] = {}
+        for profile in self.providers:
+            if profile.id in declared:
+                raise ConfigError(
+                    f"duplicate provider id {profile.id!r}; a model selects a profile "
+                    "by id, so give one of them a different 'id'"
+                )
+            declared[profile.id] = profile
+
+        kinds = _provider_kinds()
+        for spec in self.models:
+            if not spec.provider:
+                continue
+            name = str(spec.provider)
+            # A bare vendor kind is v1 syntax: `provider: anthropic` means "use
+            # the registry's anthropic connector" and must keep meaning that.
+            if name in declared or name in kinds:
+                continue
+            raise ConfigError(
+                f"model {spec.key!r}: provider {name!r} is neither a declared "
+                f"providers[].id ({', '.join(sorted(declared)) or 'none declared'}) "
+                f"nor a vendor kind ({', '.join(sorted(kinds))}). Declare it under "
+                "'providers:' or name one of those kinds."
+            )
+
         known = set(BUILTIN_METRICS)
         for name in self.metrics.weights:
             if name not in known and not self.metrics.direction(name):
