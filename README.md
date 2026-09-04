@@ -1,7 +1,6 @@
 # Agent Arena
 
 [![CI](https://img.shields.io/github/actions/workflow/status/adityamhaske/agent-arena/ci.yml?branch=main&label=CI)](https://github.com/adityamhaske/agent-arena/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/agent-arena)](https://pypi.org/project/agent-arena/)
 [![TestPyPI](https://img.shields.io/badge/TestPyPI-2.0.0rc2-informational)](https://test.pypi.org/project/agent-arena/2.0.0rc2/)
 ![Python 3.10 – 3.13](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)
 [![License MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
