@@ -6,8 +6,29 @@ Python 3.10, 3.11, 3.12 or 3.13. CI tests all four.
 
 ## Install
 
-The package is not yet on PyPI — the release workflow is configured but no
-version has been tagged. Install from source:
+A `2.0.0rc1` release candidate is on **TestPyPI**; nothing has been tagged on
+the real index yet. Three ways to get it, in order of least commitment:
+
+**Try the release candidate with `uvx`, no install at all:**
+
+```bash
+uvx --index-url https://test.pypi.org/simple/ \
+    --extra-index-url https://pypi.org/simple/ \
+    --from agent-arena==2.0.0rc1 arena --version
+```
+
+**Install the release candidate:**
+
+```bash
+pip install --index-url https://test.pypi.org/simple/ \
+             --extra-index-url https://pypi.org/simple/ \
+             agent-arena==2.0.0rc1
+```
+
+The `--extra-index-url` is needed because TestPyPI does not mirror PyPI — it
+is where `pyyaml`, the one real dependency, actually comes from.
+
+**Or install from source**, which always tracks `main`:
 
 ```bash
 git clone https://github.com/adityamhaske/agent-arena
@@ -15,8 +36,38 @@ cd agent-arena
 pip install -e .
 ```
 
-That gives you the engine and the CLI. One dependency: PyYAML, and even that is
-optional — JSON config works without it.
+Any of the three gives you the engine and the CLI. One dependency: PyYAML, and
+even that is optional — JSON config works without it.
+
+## Docker
+
+```bash
+docker build --build-arg PIP_INDEX_URL=https://test.pypi.org/simple/ \
+  -t agent-arena .
+docker run -p 8420:8420 -v $(pwd)/projects:/data/projects agent-arena
+```
+
+Drop `--build-arg PIP_INDEX_URL=...` once a real release is tagged; the
+Dockerfile then installs the same package from PyPI directly.
+
+`arena ui` has no authentication by design, and inside a container reaching it
+at all requires binding `0.0.0.0` — which the image does. That means anyone
+who can reach the published port can read and edit every mounted project and
+spend API credit through it. Put it behind your own network boundary; never
+publish the port straight to the open internet. See
+[../security/hardening.md](../security/hardening.md).
+
+For one-shot CLI use instead of the UI, override the command:
+
+```bash
+docker run -v $(pwd):/data agent-arena evaluate --project projects/my_project
+```
+
+## Devcontainer / Codespaces
+
+`.devcontainer/devcontainer.json` is in the repo. Opening it in VS Code or a
+GitHub Codespace runs `pip install -e ".[dev]"` automatically and forwards
+port 8420 for the UI.
 
 ## Extras
 
@@ -63,7 +114,7 @@ a leaderboard, the install is good.
 
 ```bash
 pip install -e ".[dev]"
-python3 -m pytest -q        # 620 passed in ~30s
+python3 -m pytest -q        # 697 passed in ~38s
 ```
 
 Use a **fresh** virtualenv if you want to verify the stdlib-only invariant. An

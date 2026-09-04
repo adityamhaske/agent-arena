@@ -205,6 +205,25 @@ def build_parser() -> argparse.ArgumentParser:
     env_cmd = sub.add_parser("env", help="show which .env files were found (values redacted)")
     add_project(env_cmd)
 
+    watch = sub.add_parser(
+        "watch",
+        help="re-evaluate a project and report drift against its own history",
+    )
+    add_project(watch)
+    watch.add_argument("--threshold", type=float,
+                       help="composite delta that counts as drift (default: 0.05, or watch.drift_threshold)")
+    watch.add_argument("--webhook", help="POST a JSON report here on drift (default: watch.webhook)")
+    watch.add_argument("--history", type=int, default=5,
+                       help="how many prior runs form the baseline (default: 5)")
+    watch.add_argument("--loop", action="store_true",
+                       help="keep re-running every --interval seconds instead of once")
+    watch.add_argument("--interval", type=float, default=3600.0,
+                       help="seconds between ticks when --loop is set (default: 3600)")
+    watch.add_argument("--fail-on-drift", action="store_true",
+                       help="exit 1 when anything is flagged, for a CI gate")
+    watch.add_argument("--json", action="store_true", help="print each report as JSON")
+    watch.add_argument("--quiet", "-q", action="store_true", help="only print flagged models")
+
     validate = sub.add_parser("validate", help="check a project's config and test files")
     add_project(validate)
 
@@ -496,7 +515,15 @@ def cmd_models(args: argparse.Namespace) -> int:
     print(text_table(
         ["model", "provider", "in $/Mtok", "out $/Mtok", "context", "features"], rows
     ))
-    print(f"  Catalog as of {book.as_of}. Verify against your provider's price list.")
+    freshness = f"  Catalog as of {book.as_of}. Verify against your provider's price list."
+    if book.is_stale():
+        age = book.age_days()
+        freshness = (
+            f"  ! Catalog is {age} days old (as of {book.as_of}), past the "
+            f"{book.STALE_AFTER_DAYS}-day freshness window. Prices move — verify "
+            "against your provider before making a decision on cost."
+        )
+    print(freshness)
     if unpriced:
         print(
             "\n  No pricing for: "
@@ -566,6 +593,14 @@ def cmd_validate(args: argparse.Namespace) -> int:
     print(f"✓ eval types  {', '.join(sorted({c.eval_type for c in runner.test_cases}))}")
     print(f"✓ scorers     {len(runner.registry.names)} registered")
     print(f"✓ models      {len(config.enabled_models)} enabled")
+    if runner.price_book.is_stale():
+        age = runner.price_book.age_days()
+        print(
+            f"! pricing     catalog is {age} days old (as of {runner.price_book.as_of}) — "
+            "verify against your provider before deciding on cost"
+        )
+    else:
+        print(f"✓ pricing     catalog as of {runner.price_book.as_of}")
 
     for spec in config.enabled_models:
         card = runner.price_book.get(spec.model, provider=resolve_provider(spec))
@@ -951,6 +986,77 @@ def cmd_config(args: argparse.Namespace) -> int:
     return 1
 
 
+def cmd_watch(args: argparse.Namespace) -> int:
+    import json as _json  # noqa: PLC0415
+    import time as _time  # noqa: PLC0415
+
+    from .core.watch import notify_webhook  # noqa: PLC0415
+
+    config = load_config(args.project)
+    threshold = args.threshold if args.threshold is not None else config.watch.drift_threshold
+    webhook = args.webhook or config.watch.webhook
+
+    any_flagged = False
+    ticks = 0
+    while True:
+        report = _watch_tick(config, threshold, args.history)
+        any_flagged = any_flagged or bool(report.flagged)
+
+        if args.json:
+            print(_json.dumps(report.to_dict(), default=str))
+        else:
+            _print_watch_report(report, quiet=args.quiet)
+
+        if webhook and report.flagged:
+            error = notify_webhook(
+                webhook,
+                {"project": report.project, "run_id": report.run_id,
+                 "flagged": [d.to_dict() for d in report.flagged]},
+            )
+            if error:
+                print(f"  (webhook failed: {error})", file=sys.stderr)
+
+        ticks += 1
+        if not args.loop:
+            break
+        _time.sleep(args.interval)
+
+    if args.fail_on_drift and any_flagged:
+        return 1
+    return 0
+
+
+def _watch_tick(config: ProjectConfig, threshold: float, history_limit: int):
+    """One evaluation, compared to its own recent history."""
+    from .core.runner import ArenaRunner  # noqa: PLC0415
+    from .core.store import ResultStore  # noqa: PLC0415
+    from .core.watch import WatchReport, compare_to_history  # noqa: PLC0415
+
+    runner = ArenaRunner(config)
+    result = runner.run()
+
+    drifts = []
+    with ResultStore(config.database) as store:
+        for entry in result.leaderboard.entries:
+            history = store.model_history(config.project, entry.key, limit=history_limit + 1)
+            drifts.append(
+                compare_to_history(entry.key, entry.composite, entry.status, history, threshold)
+            )
+    return WatchReport(run_id=result.run_id, project=config.project, drifts=drifts)
+
+
+def _print_watch_report(report, quiet: bool) -> None:
+    rows = report.flagged if quiet else report.drifts
+    if not rows:
+        if not quiet:
+            print(f"\n{report.project} — {report.run_id}: no drift.")
+        return
+    print(f"\n{report.project} — {report.run_id}:")
+    for drift in rows:
+        marker = "!" if drift.flagged else " "
+        print(f"  {marker} {drift.sentence}")
+
+
 def cmd_export(args: argparse.Namespace) -> int:
     from .service import export as svc  # noqa: PLC0415
 
@@ -991,6 +1097,7 @@ COMMANDS = {
     "rm": cmd_rm,
     "vacuum": cmd_vacuum,
     "export": cmd_export,
+    "watch": cmd_watch,
     "providers": cmd_providers,
     "secrets": cmd_secrets,
     "config": cmd_config,

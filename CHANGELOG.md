@@ -33,6 +33,38 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   ranking is meaningless", when it usually means the opposite: the models
   answer about equally well, so cost and speed are deciding.
 
+- **`arena watch`.** Re-evaluates a project and compares the fresh result
+  against the mean of its own recent history, flagging a real composite move
+  or a status change. A configured `webhook` fires on drift; `--fail-on-drift`
+  turns it into a CI gate; `--loop --interval` runs it as a long-lived process
+  for anyone without their own scheduler. Being disqualified in every run is
+  not itself drift — only a *change* in status is, so a steadily-failing model
+  is not re-flagged every tick.
+- **A published GitHub Action** (`.github/actions/agent-arena-eval`) that
+  evaluates a project on a pull request and posts the leaderboard as a
+  comment, updated in place on every push rather than duplicated. An optional
+  `baseline` input (an `arena export --format json` file, typically from the
+  base branch) adds a delta column. Dogfooded in this repo by
+  `.github/workflows/pr-eval-demo.yml` against an offline mock-model project,
+  so the action is proven in real GitHub Actions and not only in
+  `tests/test_pr_comment_action.py`.
+- **Pricing-catalog staleness detection.** `arena models` and `arena validate`
+  warn when `model_cards.json`'s `as_of` is more than 90 days old — the
+  roadmap's own "warn past 90 days" wording, given a name
+  (`PriceBook.is_stale`) other code can reference.
+- **`Dockerfile`, `.dockerignore`, `.devcontainer/devcontainer.json`.** The
+  image defaults to `arena ui --host 0.0.0.0`, since binding loopback inside a
+  container reaches nothing outside it; the Dockerfile's own comment says
+  plainly what that means for anyone publishing the port. Verified end to end
+  against the `2.0.0rc1` build on TestPyPI: the image builds, the CLI and the
+  UI both run, and a project mounted at `/data/projects` is discovered.
+- **CLI test coverage for the lifecycle commands** (`tests/test_cli_lifecycle.py`).
+  `arena rm`, `export`, `providers`, `secrets`, `config`, `duplicate`,
+  `archive`, `vacuum`, `label`, `runs`, `projects` and `env` had been added
+  across earlier commits with only their service-layer logic tested — the
+  argument parsing and confirmation prompts had never been exercised through
+  `main()` itself.
+
 ### Changed
 
 - `_rehydrate` moved from `web/api.py` into `core/runner.py`. Both a resumed

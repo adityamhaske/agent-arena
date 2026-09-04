@@ -140,6 +140,32 @@ class PriceBook:
 
     # ---- layering -----------------------------------------------------
 
+    #: Past this many days, a catalog is treated as stale enough to warn about.
+    #: Prices move; the roadmap's own wording is "warn past 90 days" and this
+    #: is that number given a name other code can reference.
+    STALE_AFTER_DAYS = 90
+
+    def age_days(self) -> int | None:
+        """Days since ``as_of``, or ``None`` if it is missing or unparseable.
+
+        Never raises: a catalog with a malformed date should warn about being
+        unparseable, not crash the command that was about to tell the user
+        their prices might be stale.
+        """
+        if not self.as_of:
+            return None
+        try:
+            from datetime import date  # noqa: PLC0415
+
+            parsed = date.fromisoformat(self.as_of[:10])
+        except ValueError:
+            return None
+        return (date.today() - parsed).days
+
+    def is_stale(self, after_days: int | None = None) -> bool:
+        age = self.age_days()
+        return age is not None and age > (after_days or self.STALE_AFTER_DAYS)
+
     def merge_file(self, path: str | Path) -> None:
         """Merge a project pricing file over the shipped catalog."""
         try:

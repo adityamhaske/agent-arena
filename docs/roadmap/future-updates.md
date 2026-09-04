@@ -89,18 +89,25 @@ Every input is already in SQLite. Stdlib `statistics` and `random` only.
 
 **Size.** Medium, and fully testable offline against mock models.
 
-## 7. Continuous evaluation
+## 7. Continuous evaluation — shipped
 
-**Problem.** A model choice decays. Providers update models silently, prompts
-drift, traffic shifts, prices change. The arena is used once at a decision point
-and the decision rots.
+`arena watch` compares a fresh run against the mean of its own recent history
+and flags a real move — a composite drop or a status change — with a webhook
+for alerting and `--fail-on-drift` for a CI gate. See
+[../guides/continuous-evaluation.md](../guides/continuous-evaluation.md).
 
-**Work.** `arena watch` — a scheduled re-run that alerts when a model leaves its
-historical band. A published GitHub Action that runs on PRs touching prompts or
-pipeline code and comments the leaderboard delta, gated by the existing
-`--fail-under`. Provider-change detection using the model card's `as_of`.
+`.github/actions/agent-arena-eval` runs on PRs and comments the leaderboard,
+with an optional baseline diff; `--fail-under` gates it when you are ready.
+Dogfooded in this repo by `.github/workflows/pr-eval-demo.yml`. See
+[../guides/ci-integration.md](../guides/ci-integration.md).
 
-**Size.** Small–medium. `store.model_history()` already answers most of it.
+`arena models` and `arena validate` warn when the price catalog's `as_of` is
+past 90 days — a different kind of drift, the catalog going stale rather than
+a model's accuracy, but the same underlying concern.
+
+Remaining: `arena watch --loop` reinvents a scheduler rather than integrating
+with one properly (cron, systemd timers), which is fine for now and could grow
+a native "run under launchd/systemd" mode later if anyone asks for it.
 
 ## 8. Test cases from reality
 

@@ -543,6 +543,32 @@ class StatisticsSettings:
 
 
 @dataclass
+class WatchSettings:
+    """Defaults for `arena watch`, so a scheduled invocation needs no flags.
+
+    Both fields are optional and CLI flags always win, matching the pattern
+    everywhere else in this file: config sets the default, the flag overrides
+    it for one run.
+    """
+
+    drift_threshold: float = 0.05
+    webhook: str | None = None
+
+    @classmethod
+    def parse(cls, raw: Any) -> WatchSettings:
+        if raw is None:
+            return cls()
+        raw = _as_dict(raw, "watch")
+        threshold = float(raw.get("drift_threshold", 0.05))
+        if not 0.0 < threshold < 1.0:
+            raise ConfigError(
+                f"watch.drift_threshold must be between 0 and 1, got {threshold!r}"
+            )
+        webhook = raw.get("webhook")
+        return cls(drift_threshold=threshold, webhook=str(webhook) if webhook else None)
+
+
+@dataclass
 class BudgetSettings:
     """What a run may spend before the harness stops or merely complains.
 
@@ -626,6 +652,7 @@ class ProjectConfig:
     constraints: Constraints = field(default_factory=Constraints)
     budgets: BudgetSettings = field(default_factory=BudgetSettings)
     statistics: StatisticsSettings = field(default_factory=StatisticsSettings)
+    watch: WatchSettings = field(default_factory=WatchSettings)
     test_paths: list[str] = field(default_factory=list)
     test_filter: dict[str, Any] = field(default_factory=dict)
     scorer_paths: list[str] = field(default_factory=list)
@@ -750,6 +777,7 @@ class ProjectConfig:
             constraints=Constraints.parse(data.get("constraints")),
             budgets=budgets,
             statistics=StatisticsSettings.parse(data.get("statistics")),
+            watch=WatchSettings.parse(data.get("watch")),
             test_paths=test_paths,
             test_filter=test_filter,
             scorer_paths=[

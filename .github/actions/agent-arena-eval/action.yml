@@ -1,0 +1,120 @@
+name: "Agent Arena Evaluate"
+description: >
+  Run an Agent Arena project and comment the leaderboard on the pull request.
+  Installs the arena, runs the evaluation, and — when a baseline result is
+  given — reports the delta per model rather than only the new numbers.
+author: "Agent Arena"
+branding:
+  icon: "bar-chart-2"
+  color: "blue"
+
+inputs:
+  project:
+    description: "Path to the project folder (containing config.yaml and tests.yaml)"
+    required: true
+  fail-under:
+    description: >
+      Fail the step if the winning model's composite is below this. Omit to
+      never fail on score — useful when you only want the comment, and want a
+      human to read it before anything gates on it.
+    required: false
+    default: ""
+  baseline:
+    description: >
+      Path to a previously exported `arena export --format json` file (for
+      example, checked out from the base branch) to diff against. Omit to
+      post the leaderboard with no delta column.
+    required: false
+    default: ""
+  github-token:
+    description: "Token used to post the PR comment. Needs pull-requests: write."
+    required: false
+    default: ${{ github.token }}
+  install-extra:
+    description: >
+      Optional extras to install alongside the engine, e.g. "anthropic" or
+      "all". Leave empty for an offline project using only mock/local models.
+    required: false
+    default: ""
+  package-source:
+    description: >
+      Override what gets installed instead of the PyPI release — a local path
+      (e.g. "." when this action runs inside the arena's own checkout) or a
+      pip requirement spec such as a git URL. Lets the action be tested
+      against a branch or fork before anything is published. Most callers
+      should leave this empty.
+    required: false
+    default: ""
+  python-version:
+    description: "Python version to run the evaluation under."
+    required: false
+    default: "3.12"
+
+outputs:
+  composite:
+    description: "The winning model's composite score, or empty if every model was disqualified"
+    value: ${{ steps.evaluate.outputs.composite }}
+  winner:
+    description: "The winning model's key, or empty"
+    value: ${{ steps.evaluate.outputs.winner }}
+  result-path:
+    description: "Path to the JSON result this run produced"
+    value: ${{ steps.evaluate.outputs.result_path }}
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install Agent Arena
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.package-source }}" ]; then
+          pip install "${{ inputs.package-source }}"
+        elif [ -n "${{ inputs.install-extra }}" ]; then
+          pip install "agent-arena[${{ inputs.install-extra }}]"
+        else
+          pip install agent-arena
+        fi
+
+    - name: Evaluate
+      id: evaluate
+      shell: bash
+      run: |
+        set -euo pipefail
+        result_path="$RUNNER_TEMP/agent-arena-result.json"
+
+        fail_flag=()
+        if [ -n "${{ inputs.fail-under }}" ]; then
+          fail_flag=(--fail-under "${{ inputs.fail-under }}")
+        fi
+
+        # --quiet is required alongside --json: without it the progress dots
+        # share stdout with the JSON and the file this writes is not parseable.
+        # A non-zero exit here (only possible with --fail-under) still leaves
+        # the result file written, so the comment step below can report why.
+        arena evaluate --project "${{ inputs.project }}" --quiet --json "${fail_flag[@]}" \
+          > "$result_path" || echo "evaluate_failed=1" >> "$GITHUB_ENV"
+
+        echo "result_path=$result_path" >> "$GITHUB_OUTPUT"
+
+        python3 "${{ github.action_path }}/extract_outputs.py" "$result_path" >> "$GITHUB_OUTPUT"
+
+    - name: Comment the leaderboard
+      if: github.event_name == 'pull_request'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        python3 "${{ github.action_path }}/pr_comment.py" \
+          --result "${{ steps.evaluate.outputs.result_path }}" \
+          --baseline "${{ inputs.baseline }}" \
+          --repo "${{ github.repository }}" \
+          --pr "${{ github.event.pull_request.number }}"
+
+    - name: Fail if the evaluation itself failed
+      if: env.evaluate_failed == '1'
+      shell: bash
+      run: exit 1

@@ -140,8 +140,72 @@ silently changing a model underneath you.
 That last point is the one that bites. `arena validate` before `arena evaluate`
 is what turns it from a silent no-op into a failure.
 
-## Planned
+## The published action
 
-A published action that runs on PRs touching prompts or pipeline code and
-comments the leaderboard delta. See
-[../roadmap/future-updates.md](../roadmap/future-updates.md).
+`.github/actions/agent-arena-eval` wraps the steps above into one action:
+install, evaluate, and comment the leaderboard on the pull request.
+
+```yaml
+- uses: adityamhaske/agent-arena/.github/actions/agent-arena-eval@main
+  with:
+    project: projects/support_triage
+    fail-under: "0.75"        # optional; omit to comment without gating
+```
+
+| Input | Default | Does |
+|---|---|---|
+| `project` | *(required)* | Path to the project folder |
+| `fail-under` | *(none)* | Fails the step if the winner's composite is below this |
+| `baseline` | *(none)* | Path to an `arena export --format json` file — usually the base branch's result — to show a delta column instead of just the new numbers |
+| `install-extra` | *(none)* | e.g. `anthropic`, for a project using a real provider |
+| `github-token` | `${{ github.token }}` | Needs `pull-requests: write` to post the comment |
+| `python-version` | `3.12` | |
+
+| Output | Is |
+|---|---|
+| `composite` | The winner's composite, or empty if everything was disqualified |
+| `winner` | The winner's model key |
+| `result-path` | Path to the full JSON result, for a later step to inspect |
+
+The comment is **updated in place** on every push to the PR rather than
+growing a new one each time — it is identified by an HTML comment marker, the
+usual convention for a bot comment that repeats.
+
+### Comparing against the base branch
+
+```yaml
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get the base branch's result
+        run: |
+          git fetch origin ${{ github.base_ref }} --depth=1
+          git show origin/${{ github.base_ref }}:projects/my_project/results/baseline.json             > baseline.json || echo '{"rankings":[]}' > baseline.json
+
+      - uses: adityamhaske/agent-arena/.github/actions/agent-arena-eval@main
+        with:
+          project: projects/my_project
+          baseline: baseline.json
+```
+
+That assumes a `baseline.json` is committed and refreshed on `main` — for
+example via `arena export --format json --out projects/my_project/results/baseline.json`
+in a workflow that runs on push to `main`. Without one, the action still posts
+the leaderboard; it just has no delta column.
+
+### The demo in this repo
+
+`.github/workflows/pr-eval-demo.yml` dogfoods the action against
+`projects/support_triage` on every PR that touches it — offline, with `mock:`
+models, so it costs nothing and needs no secret. It is the action's own proof
+that it actually works in real GitHub Actions, on top of the unit tests in
+`tests/test_pr_comment_action.py`.
+
+### Never a hard gate the first time
+
+Land the action **without** `fail-under` first, so it comments for a few PRs
+before anything can block a merge. A ranking is only worth gating on once
+someone has actually looked at what it says.

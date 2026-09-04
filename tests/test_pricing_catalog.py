@@ -242,3 +242,70 @@ def test_the_note_tells_the_reader_to_verify_before_spending_money() -> None:
 
     assert "list price" in note
     assert "verify" in note
+
+
+# --------------------------------------------------------------------- staleness
+
+
+class StalenessTests:
+    """Roadmap wording: 'warn past 90 days'. This is that number given a name
+    other code can reference, and never allowed to crash a command over a
+    malformed date — the check exists to warn, not to become a new failure
+    mode."""
+
+    def test_a_fresh_catalog_is_not_stale(self):
+        from datetime import date, timedelta
+
+        recent = (date.today() - timedelta(days=5)).isoformat()
+        book = PriceBook({"as_of": recent, "models": {}})
+        assert book.is_stale() is False
+        assert book.age_days() == 5
+
+    def test_a_catalog_past_the_window_is_stale(self):
+        book = PriceBook({"as_of": "2020-01-01", "models": {}})
+        assert book.is_stale() is True
+        assert book.age_days() > 90
+
+    def test_the_threshold_is_configurable_per_call(self):
+        from datetime import date, timedelta
+
+        ten_days_old = (date.today() - timedelta(days=10)).isoformat()
+        book = PriceBook({"as_of": ten_days_old, "models": {}})
+        assert book.is_stale(after_days=5) is True
+        assert book.is_stale(after_days=30) is False
+
+    def test_a_missing_as_of_has_no_age_and_is_not_stale(self):
+        book = PriceBook({"models": {}})
+        assert book.age_days() is None
+        assert book.is_stale() is False
+
+    def test_a_malformed_as_of_does_not_raise(self):
+        book = PriceBook({"as_of": "not-a-real-date", "models": {}})
+        assert book.age_days() is None
+        assert book.is_stale() is False
+
+    def test_the_shipped_catalog_is_fresh_as_of_writing(self):
+        # If this ever fails, the catalog itself needs a refresh, not the test.
+        book = PriceBook()
+        assert book.age_days() is not None
+
+
+def test_arena_validate_reports_pricing_freshness(simple_project, capsys):
+    from agent_arena.cli import main
+
+    assert main(["validate", "--project", str(simple_project)]) == 0
+    assert "pricing" in capsys.readouterr().out
+
+
+def test_arena_models_flags_a_stale_catalog(monkeypatch, capsys):
+    from agent_arena.cli import main
+    from agent_arena.connectors import pricing as pricing_module
+
+    class _StaleBook(PriceBook):
+        def __init__(self):
+            super().__init__({"as_of": "2020-01-01", "models": {}})
+
+    monkeypatch.setattr(pricing_module, "PriceBook", _StaleBook)
+    main(["models"])
+    out = capsys.readouterr().out
+    assert "days old" in out

@@ -1,0 +1,16 @@
+.git
+.github
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+*.egg-info
+results/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+site/_build
+node_modules
+.venv
+venv
+.DS_Store

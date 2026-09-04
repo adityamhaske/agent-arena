@@ -19,7 +19,7 @@ pip install -e ".[dev]"
 python3 -m pytest -q
 ```
 
-You should see **620 passed** in about 12 seconds. The whole suite runs offline:
+You should see **697 passed** in about 12 seconds. The whole suite runs offline:
 no API key, no network, and — deliberately — no provider SDK installed. If it is
 not green before you have changed anything, fix that first; you need Python
 3.10 or newer and nothing else.
@@ -246,7 +246,7 @@ The codebase is deliberately plain. Match the file you are editing.
 
 ```bash
 pip install -e ".[dev]"
-python3 -m pytest -q                                   # 620 tests, all offline
+python3 -m pytest -q                                   # 697 tests, all offline
 
 arena validate --project projects/support_triage
 arena evaluate --project projects/support_triage --quiet --no-report

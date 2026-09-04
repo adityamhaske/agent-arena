@@ -12,3 +12,4 @@ every output is real.
 | [custom-scorers.md](custom-scorers.md) | Grading only you can write |
 | [comparing-pipelines.md](comparing-pipelines.md) | A whole multi-agent system on the leaderboard |
 | [ci-integration.md](ci-integration.md) | Gating a merge on evaluation results |
+| [continuous-evaluation.md](continuous-evaluation.md) | `arena watch` — catching a model that drifted since you picked it |

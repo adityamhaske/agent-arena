@@ -209,6 +209,9 @@ PAGES: list[Page] = [
          "A whole multi-agent system on the leaderboard."),
     Page("/docs/guides/ci-integration/", "CI integration", "docs/guides/ci-integration.md",
          "Documentation", "Gating a merge on evaluation results."),
+    Page("/docs/guides/continuous-evaluation/", "Continuous evaluation",
+         "docs/guides/continuous-evaluation.md", "Documentation",
+         "arena watch — catching a model that drifted since you picked it."),
 
     Page("/docs/operations/", "Operations", "docs/operations/README.md", "Documentation",
          "Installing, running, controlling cost, storage, troubleshooting."),

@@ -37,7 +37,7 @@ Last updated for the commit that added the run and project lifecycle.
 | `projects`, `runs`, `rm`, `duplicate`, `archive`, `vacuum`, `label`, `env` | Shipped |
 | `export`, `secrets`, `providers`, `config` | Shipped |
 | `evaluate --resume` | Shipped |
-| `watch` | Planned |
+| `watch` | Shipped |
 
 ## Browser UI
 
@@ -103,7 +103,7 @@ routes, and runner integration — is the next piece of work.
 | PyPI release workflow with wheel verification | Shipped |
 | **Published to PyPI** | **Not yet** — the workflow is configured; no release has been tagged. Install from source |
 | Documentation site | Shipped |
-| 620 tests, offline, ~30s | Shipped |
+| 697 tests, offline, ~38s | Shipped |
 
 ## Statistics
 
@@ -119,9 +119,11 @@ routes, and runner integration — is the next piece of work.
 
 | Capability | Status |
 |---|---|
-| `arena watch` | Planned |
-| GitHub Action | Planned — `--fail-under` works today in a plain workflow step |
-| Provider-change detection | Planned |
+| `arena watch` | Shipped | Compares a run to the mean of its own recent history; a `webhook` fires on drift |
+| GitHub Action | Shipped | `.github/actions/agent-arena-eval`, dogfooded by `.github/workflows/pr-eval-demo.yml` |
+| Pricing-catalog staleness detection | Shipped | `arena models` / `arena validate` warn past 90 days |
+| Docker image | Shipped | `Dockerfile` at the repo root, verified against the TestPyPI rc |
+| Devcontainer | Shipped | `.devcontainer/devcontainer.json` |
 | Docker image, devcontainer | Planned |
 
 ## If you only remember one thing

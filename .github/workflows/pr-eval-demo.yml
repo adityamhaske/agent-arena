@@ -1,0 +1,35 @@
+name: PR evaluation demo
+
+# Dogfoods .github/actions/agent-arena-eval against this repo's own example
+# project, so the published action is proven to work in real GitHub Actions —
+# not only in the local script tests under tests/test_pr_comment_action.py.
+#
+# `package-source: .` installs the action from this checkout rather than from
+# PyPI, which is what makes this runnable before the package has ever been
+# released. A third-party caller of the action would leave that input empty.
+#
+# Offline and free: projects/support_triage is all mock: models.
+
+on:
+  pull_request:
+    paths:
+      - 'projects/support_triage/**'
+      - '.github/actions/agent-arena-eval/**'
+      - '.github/workflows/pr-eval-demo.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Evaluate and comment
+        uses: ./.github/actions/agent-arena-eval
+        with:
+          project: projects/support_triage
+          package-source: "."
