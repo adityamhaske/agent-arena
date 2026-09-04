@@ -2,6 +2,7 @@
 
 [![CI](https://img.shields.io/github/actions/workflow/status/adityamhaske/agent-arena/ci.yml?branch=main&label=CI)](https://github.com/adityamhaske/agent-arena/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/agent-arena)](https://pypi.org/project/agent-arena/)
+[![TestPyPI](https://img.shields.io/badge/TestPyPI-2.0.0rc1-informational)](https://test.pypi.org/project/agent-arena/2.0.0rc1/)
 ![Python 3.10 – 3.13](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)
 [![License MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -30,6 +31,12 @@ cd agent-arena
 pip install -e .          # engine only; add [anthropic], [openai], [gemini], [all]
 arena evaluate --project projects/support_triage
 ```
+
+A `2.0.0rc1` release candidate is also on TestPyPI, if you would rather not
+clone: `pip install --index-url https://test.pypi.org/simple/
+--extra-index-url https://pypi.org/simple/ agent-arena==2.0.0rc1` — see
+[installation](docs/operations/installation.md) for the `uvx` one-liner and a
+Docker image.
 
 ```
   #  model         id             composite  accuracy  cost   latency  status
@@ -73,9 +80,10 @@ What this repo does that they do not, all of it visible in the code here:
 - **Hard constraints disqualify rather than rank low.** `constraints:` in
   `config.yaml` moves a model to `DISQUALIFIED` with the failing number printed.
   A leaderboard that ranks an unusable model 4th is lying to you.
-- **It will not dress a coin flip as a result.** When the top two are within
-  0.02 the report says the margin is inside the noise for a sweep this size —
-  and says whether more *trials* or more *cases* would actually separate them.
+- **It will not dress a coin flip as a result.** A bootstrap confidence interval
+  and a paired comparison, resampled over test cases rather than trials, say
+  when two models are genuinely too close to call — and roughly how many more
+  cases would settle it, not a vague "run it again".
 - **Stdlib only, with one optional dependency.** PyYAML, and JSON config works
   without even that. No account, no server, no build step; the browser UI is
   `http.server` plus vanilla JS.
@@ -86,6 +94,10 @@ What this repo does that they do not, all of it visible in the code here:
   scored, priced and constrained on the same leaderboard as a single API call,
   so *should we add the critic step?* becomes the same question as *should we use
   the bigger model?*
+- **The whole lifecycle, not just a run.** Delete, duplicate, archive and export
+  a project or a run — from the CLI and the browser — with a typed
+  confirmation before anything irreversible and `--dry-run` everywhere. A raw
+  API key is never written to a config file or to disk in the clear.
 
 It is deliberately not a hosted platform, has no dashboard beyond a localhost
 page, and does not trace inside a running production system. If that is what you
@@ -315,7 +327,19 @@ constraints:                     # non-negotiables → DISQUALIFIED
 scorers:
   default: classification
   options: {classification: {labels: [billing, technical, ...]}}
+
+providers:                       # optional: named connection profiles —
+  - id: work_openai               # two keys for one vendor, a corporate
+    kind: openai                  # gateway with its own headers and CA,
+    api_key: ${env:OPENAI_API_KEY}  # or per-provider rate limits
+    rate_limit: {rpm: 500}
+
+budgets: {max_run_usd: 5.00}     # optional: stop the sweep if it crosses this
 ```
+
+Every block above except `models:` is optional, and every one you omit behaves
+exactly as it did before it existed — see
+[the full config reference](docs/reference/config-schema.md).
 
 **`tests.yaml`** is your cases:
 
@@ -342,12 +366,31 @@ arena models   --project <p>   # model cards: price, context window, features
 arena tests    --project <p>   # what cases will run
 arena report   --project <p> --run-id <id>   # re-show a stored run
 arena history  --project <p>   # past runs, and regressions between them
+arena export   --project <p> --format html   # a self-contained report, no server needed
+arena watch    --project <p>   # re-run and flag drift against your own history
 ```
 
 Every run lands in a SQLite database (`results/arena.sqlite`) alongside the
 Markdown and JSON reports, so you can query across runs rather than re-running.
+The full lifecycle is there too — `arena projects`, `runs`, `label`, `archive`,
+`duplicate`, `rm`, `vacuum` — each with `--dry-run` and a typed confirmation
+before anything irreversible happens. `arena providers`, `secrets` and `config`
+manage connection profiles and credentials; a literal key never touches a
+config file or lands on disk unencrypted.
+
+A run can be resumed (`--resume <run-id>` skips calls that already succeeded),
+capped by a budget that stops the sweep mid-flight, and rate-limited per
+provider so a run mixing a laptop and a frontier API does not throttle itself.
+The leaderboard also says when it does *not* have enough evidence to separate
+two models — a bootstrap confidence interval and a paired comparison, not just
+a raw composite.
+
+A GitHub Action (`.github/actions/agent-arena-eval`) runs a project on a pull
+request and comments the leaderboard, with an optional delta against a
+baseline. A `Dockerfile` and `.devcontainer/` are in the repo.
 
 **Full reference:** [docs/UNIVERSAL_ARENA.md](docs/UNIVERSAL_ARENA.md) ·
+**Every command:** [docs/reference/cli.md](docs/reference/cli.md) ·
 **Walkthrough with local models:** [demo.md](demo.md) ·
 **Sample output:** [docs/EXAMPLE_REPORT.md](docs/EXAMPLE_REPORT.md)
 
@@ -461,11 +504,14 @@ grader will tell you whether a failure was coordination or capability.
 ## Repo layout
 
 ```
-agent_arena/                    the installable engine  ─┐
-agent_arena/web/                the browser UI (`arena ui`)│
-projects/                       example + your projects  ├─ Universal Arena
-tests/                          697 engine + UI tests    │
-demo/  demo.md                  local-model walkthrough ─┘
+agent_arena/                    the installable engine  ──┐
+agent_arena/service/            project/run lifecycle,      │
+                                 secrets, providers, export  │
+agent_arena/web/                the browser UI (`arena ui`) ├─ Universal Arena
+projects/                       example + your projects     │
+tests/                          697 engine + UI tests       │
+demo/  demo.md                  local-model walkthrough    ─┘
+.github/actions/agent-arena-eval/  the published GitHub Action
 
 studies/multi_agent_handoff/    the frozen study (code, docs, committed sweep)
 
@@ -487,6 +533,8 @@ python site/build.py && python -m http.server -d site/_build 8000
 - **[Documentation map](docs/README.md)** — the full tree: architecture, security, design, testing, reference, guides, operations, roadmap
 - **[Quickstart](docs/guides/quickstart.md)** — a leaderboard in 60 seconds, no API key
 - **[What actually works yet](docs/roadmap/status.md)** — shipped, partial or planned, per capability
+- **[Continuous evaluation](docs/guides/continuous-evaluation.md)** — `arena watch`, drift detection, webhooks
+- **[CI integration](docs/guides/ci-integration.md)** — the GitHub Action, gating a merge on a score
 - **[Universal Arena guide](docs/UNIVERSAL_ARENA.md)** — full reference for the arena
 - **[Demo](demo.md)** — end-to-end walkthrough with local models and real output
 - **[Sample report](docs/EXAMPLE_REPORT.md)** — what the arena produces
@@ -497,8 +545,8 @@ python site/build.py && python -m http.server -d site/_build 8000
 
 ## Contributing
 
-Issues and pull requests are welcome. Start with the invariants — there are six
-of them, and breaking one is a bug rather than a trade-off.
+Issues and pull requests are welcome. Start with the invariants in
+[AGENTS.md](AGENTS.md) — breaking one is a bug rather than a trade-off.
 
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** — setup, what CI checks, and the bar a
   change has to clear
@@ -512,7 +560,7 @@ Before you push:
 
 ```bash
 pip install -e ".[dev]"
-pytest -q                                                 # 697 tests, offline, ~12s
+pytest -q                                                 # 697 tests, offline, ~38s
 arena validate --project projects/support_triage
 arena evaluate --project projects/support_triage --quiet --no-report
 ```

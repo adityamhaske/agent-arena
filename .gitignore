@@ -103,3 +103,23 @@ site/_build/
 scratch/
 tmp/
 temp/
+
+# Patch/merge/backup artifacts
+*.orig
+*.rej
+*.bak
+
+# Agent tooling config — per-developer, not shared (same reasoning as .vscode/.idea/)
+.claude/
+
+# JS/npm, in case a future contribution adds a frontend package under ui/
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# Docker build cache and Compose overrides some developers keep local-only
+.docker/
+docker-compose.override.yml
+
+# Editable-install / pip build leftovers not already covered above
+pip-wheel-metadata/
