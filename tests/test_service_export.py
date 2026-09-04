@@ -28,11 +28,26 @@ from agent_arena.service.errors import NotFoundError, ServiceError
 EXAMPLE = Path("projects/support_triage")
 
 
+def _seed_run(project_dir):
+    """Give the copied project a run to act on.
+
+    The tests used to assume `projects/support_triage/results/` existed. It does
+    on a machine where sweeps have been run, and it is gitignored — so the suite
+    passed locally and failed on every fresh checkout. Producing the run here
+    makes each test self-contained. It is offline and costs nothing: the example
+    project is all `mock:` models.
+    """
+    from agent_arena.core.runner import ArenaRunner
+
+    ArenaRunner.from_project(project_dir).run()
+
 @pytest.fixture()
 def sandbox(tmp_path: Path) -> Path:
     root = tmp_path / "projects"
     root.mkdir()
-    shutil.copytree(EXAMPLE, root / "support_triage")
+    shutil.copytree(EXAMPLE, root / "support_triage",
+                    ignore=shutil.ignore_patterns("results"))
+    _seed_run(root / "support_triage")
     return root
 
 

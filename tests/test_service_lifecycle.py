@@ -27,13 +27,28 @@ from agent_arena.service.paths import resolve_within, safe_name
 EXAMPLE = Path("projects/support_triage")
 
 
+def _seed_run(project_dir):
+    """Give the copied project a run to act on.
+
+    The tests used to assume `projects/support_triage/results/` existed. It does
+    on a machine where sweeps have been run, and it is gitignored — so the suite
+    passed locally and failed on every fresh checkout. Producing the run here
+    makes each test self-contained. It is offline and costs nothing: the example
+    project is all `mock:` models.
+    """
+    from agent_arena.core.runner import ArenaRunner
+
+    ArenaRunner.from_project(project_dir).run()
+
 @pytest.fixture()
 def sandbox(tmp_path: Path) -> Path:
-    """A projects folder with one real project, plus a canary beside it."""
+    """A projects folder with one real project and one run, plus a canary."""
     root = tmp_path / "projects"
     root.mkdir()
-    shutil.copytree(EXAMPLE, root / "support_triage")
+    shutil.copytree(EXAMPLE, root / "support_triage",
+                    ignore=shutil.ignore_patterns("results"))
     (tmp_path / "CANARY.txt").write_text("must survive", encoding="utf-8")
+    _seed_run(root / "support_triage")
     return root
 
 
@@ -135,8 +150,7 @@ def test_archiving_is_reversible(sandbox):
 
 def _a_run_id(sandbox) -> str:
     rows = runs.list_runs(sandbox, "support_triage", limit=1)
-    if not rows:
-        pytest.skip("the example project ships no committed runs")
+    assert rows, "the sandbox fixture should have produced a run"
     return rows[0]["run_id"]
 
 
@@ -212,9 +226,9 @@ def test_labelling_with_nothing_to_set_is_refused(sandbox):
 
 
 def test_vacuum_removes_only_soft_deleted_runs(sandbox):
+    _seed_run(sandbox / "support_triage")  # a second run to keep
     all_runs = runs.list_runs(sandbox, "support_triage", limit=100)
-    if len(all_runs) < 2:
-        pytest.skip("needs at least two committed runs")
+    assert len(all_runs) >= 2
     doomed = all_runs[0]["run_id"]
     kept = all_runs[1]["run_id"]
 

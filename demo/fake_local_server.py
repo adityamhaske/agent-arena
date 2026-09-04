@@ -30,6 +30,12 @@ MODELS: dict[str, dict[str, float]] = {
     "demo-large": {"accuracy": 0.95, "latency_ms": 900.0},
     "demo-medium": {"accuracy": 0.80, "latency_ms": 320.0},
     "demo-small": {"accuracy": 0.60, "latency_ms": 90.0},
+    # The names projects/local_demo asks for. This server stands in for Ollama,
+    # so it has to answer to what a real Ollama would be serving in that demo —
+    # otherwise the project validates against a live Ollama and fails against
+    # this, which is exactly the case CI exercises.
+    "llama3.2": {"accuracy": 0.80, "latency_ms": 320.0},
+    "qwen2.5:7b": {"accuracy": 0.86, "latency_ms": 480.0},
 }
 
 QUEUES = ("billing", "technical", "account", "shipping", "refund", "spam")

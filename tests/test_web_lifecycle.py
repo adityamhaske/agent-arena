@@ -30,8 +30,14 @@ def client(tmp_path: Path):
     """A live server over a throwaway projects folder, plus a canary beside it."""
     root = tmp_path / "projects"
     root.mkdir()
-    shutil.copytree(EXAMPLE, root / "support_triage")
+    shutil.copytree(EXAMPLE, root / "support_triage",
+                    ignore=shutil.ignore_patterns("results"))
     (tmp_path / "CANARY.txt").write_text("must survive", encoding="utf-8")
+    # Produce a run rather than assuming the gitignored results/ directory is
+    # there: it exists on a machine where sweeps have been run and nowhere else.
+    from agent_arena.core.runner import ArenaRunner
+
+    ArenaRunner.from_project(root / "support_triage").run()
 
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), build_app(root))
     thread = threading.Thread(target=httpd.serve_forever, daemon=True)
@@ -64,8 +70,7 @@ def client(tmp_path: Path):
 def _first_run_id(client) -> str:
     status, body = client("GET", "/api/projects/support_triage/runs?limit=1")
     assert status == 200
-    if not body["runs"]:
-        pytest.skip("the example project ships no committed runs")
+    assert body["runs"], "the client fixture should have produced a run"
     return body["runs"][0]["run_id"]
 
 
