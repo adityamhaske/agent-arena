@@ -51,12 +51,14 @@ Last updated for the commit that added the run and project lifecycle.
 | Eight hash routes | Shipped | |
 | Job retention cap | Shipped | 50 finished jobs |
 | Cancel a running sweep | Shipped | The runner checks the cancel event between calls; partial results are kept and labelled partial |
-| Delete a project or a run | Shipped | `DELETE` routes, with `dry_run` and `keep_results` |
+| Delete a project or a run | Shipped | In the browser and on the CLI, with a plan shown before it asks |
 | Duplicate, archive, label, vacuum | Shipped | |
 | Settings read/write over HTTP | Shipped | `GET`/`PUT /api/settings` |
-| Settings pages in the browser | Planned | The API exists; no UI is built on it |
-| Sidenav, 16 routes | Planned | |
-| Compare, Models, Providers, Cases, Scorers pages | Planned | |
+| Settings pages in the browser | Shipped | General, Defaults, Budgets, Storage, About |
+| Sidenav shell | Shipped | Grouped Evaluate / Reference / Configure, collapses at phone width |
+| Overview, Projects, Runs, Models, Scorers, Providers pages | Shipped | Vanilla JS — no framework, no build step |
+| Per-case grid (every case × every model) | Shipped | |
+| Compare two runs side by side | Planned | |
 | Server-sent events instead of polling | Planned | |
 | Token-authenticated non-loopback mode | Planned | |
 
@@ -103,7 +105,7 @@ routes, and runner integration — is the next piece of work.
 | PyPI release workflow with wheel verification | Shipped |
 | **Published to PyPI** | **Not yet** — the workflow is configured; no release has been tagged. Install from source |
 | Documentation site | Shipped |
-| 697 tests, offline, ~38s | Shipped |
+| 709 tests, offline, ~44s | Shipped |
 
 ## Statistics
 
@@ -128,16 +130,20 @@ routes, and runner integration — is the next piece of work.
 
 ## If you only remember one thing
 
-**The engine and the CLI are feature-complete for 2.0; the browser UI is not.**
+**2.0 is feature-complete across the engine, the CLI and the browser.**
 
-Everything the v2 plan called a gap in the engine has closed: delete,
-cancellation, budget enforcement, provider routing, secret references, export.
-All of it works from the CLI and the HTTP API, and all of it is tested.
+The browser UI was the last gap and it is closed: a sidenav shell over
+Overview, Projects, Runs, Models, Scorers, Providers and a five-tab Settings
+section, plus a per-case grid and destructive actions that show the real plan
+before they ask.
 
-What has not been built is the *interface* on top: the sidenav shell, the
-settings pages, and the per-case run detail view. The API those pages would
-call exists — `GET`/`PUT /api/settings`, the delete and export routes, job
-cancellation — but the eight-route hash-based UI does not use any of it yet.
+It was built as **vanilla JS rather than the React + FastAPI rewrite the v2
+plan originally approved.** That decision was revisited once the API was
+finished: 27 tested routes meant the remaining work was wiring, not
+architecture, and vanilla keeps invariant 2 intact — `pip install agent-arena`
+still ships a working UI with no extra dependency, no npm and no build step.
+React remains a reasonable future move if the interface outgrows this, but it
+would now be a decision made against something people have actually used.
 
 The engine is done for 2.0. What remains there is `arena watch` (scheduled
 re-runs) and a published GitHub Action — both of which are delivery rather than

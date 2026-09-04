@@ -5,28 +5,54 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <title>Agent Arena</title>
-<link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/app.css?v=__ARENA_VERSION__">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏟️</text></svg>">
 </head>
 <body>
 
-<header class="topbar">
-  <a class="brand" href="#/" data-link>
-    <span class="brand-mark" aria-hidden="true">◆</span>
-    <span>Agent Arena</span>
-  </a>
-  <nav>
-    <a href="#/" data-link>Your evaluations</a>
-    <a href="#/new" data-link class="btn btn-primary btn-sm">New evaluation</a>
-  </nav>
-</header>
+<a class="skip-link" href="#app">Skip to content</a>
 
-<main id="app" aria-live="polite">
-  <div class="loading">Loading…</div>
-</main>
+<div class="shell">
+
+  <aside class="sidenav" id="sidenav">
+    <a class="brand" href="#/" data-link>
+      <span class="brand-mark" aria-hidden="true">◆</span>
+      <span>Agent Arena</span>
+    </a>
+
+    <nav class="nav" id="nav" aria-label="Sections"><!-- rendered by app.js --></nav>
+
+    <div class="nav-foot">
+      <div id="run-pill" class="run-pill" hidden></div>
+      <p class="version" id="version"></p>
+    </div>
+  </aside>
+
+  <div class="pane">
+    <header class="topbar">
+      <button class="icon-btn nav-toggle" type="button" id="nav-toggle"
+              aria-expanded="false" aria-controls="sidenav" aria-label="Toggle navigation">☰</button>
+      <nav class="crumbs" id="crumbs" aria-label="Breadcrumb"></nav>
+      <a href="#/new" data-link class="btn btn-primary btn-sm">New evaluation</a>
+    </header>
+
+    <main id="app" aria-live="polite">
+      <div class="loading">Loading…</div>
+    </main>
+  </div>
+
+</div>
 
 <div id="toast" class="toast" role="status" hidden></div>
 
-<script src="/app.js"></script>
+<div id="modal" class="modal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <h2 id="modal-title"></h2>
+    <div id="modal-body"></div>
+    <div class="btn-row" id="modal-actions"></div>
+  </div>
+</div>
+
+<script src="/app.js?v=__ARENA_VERSION__"></script>
 </body>
 </html>

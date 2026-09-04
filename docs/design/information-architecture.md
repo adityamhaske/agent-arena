@@ -2,8 +2,9 @@
 
 ## What ships today
 
-Eight hash routes in `app.js`, behind a topbar with two links
-("Your evaluations", "New evaluation").
+Sixteen hash routes in `app.js` behind a sidenav grouped into Evaluate,
+Reference and Configure. Built in vanilla JS: no framework, no build step, and
+no dependency added to the install (invariant 2).
 
 | Route | View | Purpose |
 |---|---|---|
@@ -42,9 +43,9 @@ wizard is a different *input* to the same contract, not a parallel system.
 - **A two-link topbar does not scale.** It works for eight routes and not for
   sixteen.
 
-## Planned: the v2 surface
+## The shell
 
-Designed and approved, **not built**. A sidenav shell:
+As built:
 
 ```text
 ┌────────────────┬──────────────────────────────────────────────┐

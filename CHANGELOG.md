@@ -70,6 +70,41 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `_rehydrate` moved from `web/api.py` into `core/runner.py`. Both a resumed
   run and the browser's what-if need it, and core may not import web.
 
+- **A multi-page browser UI.** A sidenav shell (Evaluate / Reference /
+  Configure) over Overview, Projects, Runs, Models, Scorers, Providers and a
+  five-tab Settings section, plus a per-case grid showing every case against
+  every model. Destructive actions fetch the server's `dry_run` plan, print
+  exactly what will be removed, and require the name typed before anything
+  irreversible — the pattern already recorded in AGENTS.md, now actually
+  enforced in the interface.
+
+  Built in **vanilla JS**, revisiting the React + FastAPI plan approved
+  earlier. With the API finished at 27 tested routes the remaining work was
+  wiring rather than architecture, and vanilla keeps invariant 2 intact:
+  `pip install agent-arena` still ships a working UI with no extra
+  dependency, no npm, and no build step.
+- **Provider routes over HTTP** (`GET`/`POST /api/providers`, `DELETE`,
+  `/test`, `/discover`) — provider management had been CLI-only, and a
+  Providers page without a working "Test connection" button is not worth
+  having.
+
+### Fixed
+
+- `[hidden]` did not hide. A class rule setting `display` beats the user
+  agent's `[hidden] { display: none }`, so the modal overlay rendered
+  permanently over every page. Fixed globally rather than per-element, since
+  the toast had the same latent bug.
+- Static assets were served `max-age=60`, so an upgrade could pair a fresh
+  `app.js` with a cached `app.css` and render a subtly broken page for a
+  minute. They are now `no-store`, and the asset URLs carry the running
+  version so both refetch together.
+- `_last_run` never returned the run's cost, so the overview's spend column
+  would have been permanently empty.
+- `NotFoundError` from the service layer fell through to a generic HTTP 400,
+  making "no such provider" indistinguishable from "malformed provider" while
+  the project and run routes already answered 404. It now maps to 404, and
+  `ConflictError` to 409.
+
 ## [2.0.0rc1] - 2026-09-03
 
 First release candidate. Published to TestPyPI only.

@@ -20,6 +20,7 @@ from typing import Any, Callable
 from urllib.parse import parse_qs, urlsplit
 
 from ..core.errors import ArenaError
+from ..service.errors import ConflictError, NotFoundError
 from .api import ApiError, ArenaAPI
 from .language import plain_error
 
@@ -92,6 +93,23 @@ def build_routes(api: ArenaAPI) -> list[Route]:
         ),
         Route("POST", rf"/api/projects/{name}/vacuum", lambda name, query, **_: api.vacuum(name, query)),
         Route("GET", rf"/api/projects/{name}/export", lambda name, query, **_: api.export_run(name, query)),
+        Route("GET", r"/api/providers", lambda **_: api.list_providers()),
+        Route("POST", r"/api/providers", lambda body, **_: api.save_provider(body)),
+        Route(
+            "DELETE",
+            r"/api/providers/(?P<provider_id>[A-Za-z0-9_.-]{1,64})",
+            lambda provider_id, query, **_: api.delete_provider(provider_id, query),
+        ),
+        Route(
+            "POST",
+            r"/api/providers/(?P<provider_id>[A-Za-z0-9_.-]{1,64})/test",
+            lambda provider_id, **_: api.test_provider(provider_id),
+        ),
+        Route(
+            "POST",
+            r"/api/providers/(?P<provider_id>[A-Za-z0-9_.-]{1,64})/discover",
+            lambda provider_id, **_: api.discover_provider_models(provider_id),
+        ),
         Route("GET", r"/api/settings", lambda **_: api.settings()),
         Route("PUT", r"/api/settings", lambda body, **_: api.update_settings(body)),
     ]
@@ -240,6 +258,14 @@ class ArenaHandler(BaseHTTPRequestHandler):
             self._json(404, {"error": f"No such endpoint: {path}"})
         except ApiError as exc:
             self._json(exc.status, {"error": str(exc)})
+        except NotFoundError as exc:
+            # The service layer raises this for a name that does not exist.
+            # Without this branch it fell through to the generic 400 below, so
+            # "no such provider" and "malformed provider" looked identical to a
+            # caller, while the project and run routes already answered 404.
+            self._json(404, {"error": plain_error(str(exc)), "detail": str(exc)})
+        except ConflictError as exc:
+            self._json(409, {"error": plain_error(str(exc)), "detail": str(exc)})
         except ArenaError as exc:
             self._json(400, {"error": plain_error(str(exc)), "detail": str(exc)})
         except Exception as exc:  # noqa: BLE001 — a UI bug must not kill the server
@@ -263,11 +289,25 @@ class ArenaHandler(BaseHTTPRequestHandler):
             if not target.is_file():
                 self._json(500, {"error": "The UI files are missing from this install."})
                 return
+        body = target.read_bytes()
+        if target.name == "index.html":
+            # Stamp the asset links with the running version. Without this an
+            # upgrade can pair a fresh app.js with a cached app.css, which
+            # renders a subtly broken page rather than an obviously broken one.
+            from .. import __version__  # noqa: PLC0415
+
+            body = body.replace(b"__ARENA_VERSION__", __version__.encode())
+
         content_type, _ = mimetypes.guess_type(target.name)
-        cache = "no-store" if target.name == "index.html" else "max-age=60"
+        # Everything is served no-store. These are three small files off a
+        # loopback socket, so caching buys nothing measurable — and a cached
+        # app.css paired with a freshly upgraded app.js renders a subtly
+        # broken page for a minute after every `pip install --upgrade`, which
+        # is a bad trade for bytes nobody was waiting on.
+        cache = "no-store"
         self._send(
             200,
-            target.read_bytes(),
+            body,
             content_type or "application/octet-stream",
             {"Cache-Control": cache},
         )

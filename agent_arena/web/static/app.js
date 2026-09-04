@@ -87,19 +87,65 @@ function weightSentence(weights) {
 /* --------------------------------------------------------------- router */
 
 const routes = [
-  [/^\/?$/, viewHome],
+  [/^\/?$/, viewOverview],
+  [/^\/projects$/, viewProjects],
   [/^\/new$/, viewWizard],
+  [/^\/runs$/, viewAllRuns],
+  [/^\/models$/, viewModels],
+  [/^\/providers$/, viewProviders],
+  [/^\/scorers$/, viewScorers],
+  [/^\/settings$/, () => viewSettings('general')],
+  [/^\/settings\/([a-z-]+)$/, viewSettings],
   [/^\/p\/([a-z0-9_-]+)$/, viewProject],
   [/^\/p\/([a-z0-9_-]+)\/run$/, viewRun],
   [/^\/p\/([a-z0-9_-]+)\/results$/, viewResults],
   [/^\/p\/([a-z0-9_-]+)\/priorities$/, viewPriorities],
   [/^\/p\/([a-z0-9_-]+)\/examples$/, viewExamples],
   [/^\/p\/([a-z0-9_-]+)\/history$/, viewHistory],
+  [/^\/p\/([a-z0-9_-]+)\/cases\/([^/]+)$/, viewRunCases],
 ];
+
+/* The sidenav. `match` decides which entry is highlighted for a given hash —
+ * a prefix test rather than equality, so /p/foo/results still lights up
+ * "Projects" instead of leaving the user with no sense of where they are. */
+const NAV = [
+  { group: 'Evaluate' },
+  { href: '#/', icon: '◎', label: 'Overview', match: (p) => p === '/' },
+  { href: '#/projects', icon: '▤', label: 'Projects', match: (p) => p === '/projects' || p.startsWith('/p/') },
+  { href: '#/runs', icon: '≡', label: 'Runs', match: (p) => p === '/runs' },
+  { group: 'Reference' },
+  { href: '#/models', icon: '◈', label: 'Models', match: (p) => p === '/models' },
+  { href: '#/scorers', icon: '✓', label: 'Scorers', match: (p) => p === '/scorers' },
+  { href: '#/providers', icon: '⇄', label: 'Providers', match: (p) => p === '/providers' },
+  { group: 'Configure' },
+  { href: '#/settings', icon: '⚙', label: 'Settings', match: (p) => p.startsWith('/settings') },
+];
+
+function renderNav(path) {
+  $('#nav').innerHTML = NAV.map((item) => (
+    item.group
+      ? `<p class="nav-group">${esc(item.group)}</p>`
+      : `<a href="${item.href}" data-link class="${item.match(path) ? 'on' : ''}">
+           <span class="ico" aria-hidden="true">${item.icon}</span>${esc(item.label)}</a>`
+  )).join('');
+}
+
+function crumbs(...parts) {
+  $('#crumbs').innerHTML = parts.map((part, i) => {
+    const last = i === parts.length - 1;
+    const node = part.href && !last
+      ? `<a href="${part.href}" data-link>${esc(part.label)}</a>`
+      : `<span class="${last ? 'here' : ''}">${esc(part.label)}</span>`;
+    return i ? `<span class="sep">/</span>${node}` : node;
+  }).join('');
+}
 
 async function router() {
   if (state.poll) { clearInterval(state.poll); state.poll = null; }
   const path = location.hash.replace(/^#/, '') || '/';
+  renderNav(path);
+  $('#sidenav').classList.remove('open');
+  $('#nav-toggle').setAttribute('aria-expanded', 'false');
   for (const [pattern, view] of routes) {
     const match = path.match(pattern);
     if (match) {
@@ -1015,13 +1061,548 @@ async function runWhatIf(name) {
   toast('Recalculated from the answers already collected.');
 }
 
+/* ==================================================== destructive actions
+ *
+ * One helper for everything that removes something. It asks the server for
+ * the plan first (every destructive endpoint takes dry_run and returns the
+ * same shape either way), prints exactly what will go, and only then asks.
+ * Anything irreversible additionally requires the name to be typed — the
+ * rule recorded in AGENTS.md and docs/design/interaction-patterns.md.
+ */
+
+function closeModal() {
+  $('#modal').hidden = true;
+  $('#modal-body').innerHTML = '';
+  $('#modal-actions').innerHTML = '';
+}
+
+function describePlan(plan) {
+  const lines = [];
+  const paths = plan.paths || plan.report_files || [];
+  paths.slice(0, 8).forEach((path) => lines.push(path));
+  if (paths.length > 8) lines.push(`… and ${paths.length - 8} more`);
+  if (plan.runs_removed) lines.push(`${plan.runs_removed} run(s) of history`);
+  if (plan.results_removed) lines.push(`${plan.results_removed} recorded call(s)`);
+  if (plan.bytes) lines.push(`${Math.round(plan.bytes / 1024).toLocaleString()} KB`);
+  if (plan.referenced_by?.length) lines.push(`referenced by: ${plan.referenced_by.join(', ')}`);
+  return lines;
+}
+
+/** Show the plan, then run `commit` if the user confirms. */
+async function confirmDestructive({ title, plan, typeToConfirm, danger = 'Delete', commit }) {
+  const doomed = describePlan(plan);
+  $('#modal-title').textContent = title;
+  $('#modal-body').innerHTML = `
+    <p>This removes:</p>
+    <div class="doomed">${doomed.length ? doomed.map(esc).join('<br>') : 'nothing on disk'}</div>
+    ${typeToConfirm
+      ? `<div class="field">
+           <label for="confirm-name">Type <strong>${esc(typeToConfirm)}</strong> to confirm</label>
+           <input id="confirm-name" autocomplete="off" spellcheck="false">
+         </div>`
+      : '<p class="hint">This can be undone until you run a vacuum.</p>'}`;
+  $('#modal-actions').innerHTML = `
+    <button class="btn" id="modal-cancel" type="button">Cancel</button>
+    <button class="btn btn-danger" id="modal-go" type="button" ${typeToConfirm ? 'disabled' : ''}>${esc(danger)}</button>`;
+  $('#modal').hidden = false;
+
+  const go = $('#modal-go');
+  if (typeToConfirm) {
+    const input = $('#confirm-name');
+    input.focus();
+    input.addEventListener('input', () => { go.disabled = input.value.trim() !== typeToConfirm; });
+  } else {
+    go.focus();
+  }
+  $('#modal-cancel').addEventListener('click', closeModal);
+  go.addEventListener('click', async () => {
+    go.disabled = true;
+    try { await commit(); closeModal(); }
+    catch (error) { closeModal(); toast(error.message, true); }
+  });
+}
+
+/* ------------------------------------------------------- view: overview */
+
+async function viewOverview() {
+  crumbs({ label: 'Overview' });
+  const { projects } = await api('/api/projects');
+  state.projects = projects;
+
+  const withRuns = projects.filter((p) => p.last_run);
+  const spend = withRuns.reduce((sum, p) => sum + (p.last_run.total_cost_usd || 0), 0);
+
+  app().innerHTML = `
+    <h1>Overview</h1>
+    <p class="lede">Every evaluation answers one question: <em>for this job, which AI model
+    should we actually use?</em></p>
+
+    <div class="stat-row">
+      <div class="card stat"><span class="v">${projects.length}</span><span class="k">evaluation${projects.length === 1 ? '' : 's'}</span></div>
+      <div class="card stat"><span class="v">${withRuns.length}</span><span class="k">have been run</span></div>
+      <div class="card stat"><span class="v">${spend ? '$' + spend.toFixed(4) : '$0'}</span><span class="k">spent, last run of each</span></div>
+    </div>
+
+    <h2>Recent results</h2>
+    ${withRuns.length ? `
+      <div class="grid-scroll"><table class="data">
+        <thead><tr><th>evaluation</th><th>winner</th><th>when</th><th class="num">cost</th><th></th></tr></thead>
+        <tbody>${withRuns.map((p) => `
+          <tr>
+            <td><a href="#/p/${esc(p.name)}" data-link>${esc(p.name)}</a></td>
+            <td>${esc(p.last_run.winner || '—')}</td>
+            <td>${esc(timeAgo(p.last_run.started_at))}</td>
+            <td class="num">${p.last_run.total_cost_usd != null ? '$' + Number(p.last_run.total_cost_usd).toFixed(4) : '—'}</td>
+            <td><a class="btn btn-sm" href="#/p/${esc(p.name)}/results" data-link>View</a></td>
+          </tr>`).join('')}</tbody>
+      </table></div>`
+      : `<div class="empty">
+           <h2>Nothing has been run yet</h2>
+           <p>The example evaluations work offline with no API key — a good first run.</p>
+           <p class="btn-row"><a class="btn btn-primary" href="#/projects" data-link>See the evaluations</a></p>
+         </div>`}`;
+}
+
+/* ------------------------------------------------------- view: projects */
+
+async function viewProjects() {
+  crumbs({ label: 'Projects' });
+  const { projects } = await api('/api/projects?all=1');
+  state.projects = projects;
+
+  app().innerHTML = `
+    <div class="head-row">
+      <h1>Projects</h1>
+      <a class="btn btn-primary" href="#/new" data-link>New evaluation</a>
+    </div>
+    ${projects.length ? `
+      <div class="grid-scroll"><table class="data">
+        <thead><tr><th>name</th><th>models</th><th>examples</th><th>last run</th><th>status</th><th></th></tr></thead>
+        <tbody>${projects.map((p) => `
+          <tr class="${p.archived ? 'is-gone' : ''}">
+            <td><a href="#/p/${esc(p.name)}" data-link><strong>${esc(p.name)}</strong></a>
+                <br><span class="hint">${esc((p.description || '').slice(0, 90))}</span></td>
+            <td class="num">${p.models}</td>
+            <td class="num">${p.tests}</td>
+            <td>${p.last_run ? esc(timeAgo(p.last_run.started_at)) : '<span class="hint">never</span>'}</td>
+            <td>${p.archived ? '<span class="pill mute">archived</span>' : '<span class="pill ok">active</span>'}</td>
+            <td class="row-actions">
+              <button class="btn btn-sm" data-dup="${esc(p.name)}">Duplicate</button>
+              <button class="btn btn-sm" data-arch="${esc(p.name)}" data-on="${p.archived ? '0' : '1'}">${p.archived ? 'Unarchive' : 'Archive'}</button>
+              <button class="btn btn-sm btn-danger" data-del="${esc(p.name)}">Delete</button>
+            </td>
+          </tr>`).join('')}</tbody>
+      </table></div>`
+      : `<div class="empty"><h2>No evaluations yet</h2>
+           <p class="btn-row"><a class="btn btn-primary" href="#/new" data-link>Create one</a></p></div>`}`;
+
+  app().querySelectorAll('[data-dup]').forEach((b) => b.addEventListener('click', () => duplicateProject(b.dataset.dup)));
+  app().querySelectorAll('[data-arch]').forEach((b) => b.addEventListener('click', () => archiveProject(b.dataset.arch, b.dataset.on === '1')));
+  app().querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', () => deleteProject(b.dataset.del)));
+}
+
+async function duplicateProject(name) {
+  const copy = prompt(`Name for the copy of "${name}":`, `${name}_copy`);
+  if (!copy) return;
+  await api(`/api/projects/${name}/duplicate`, { method: 'POST', body: { name: copy } });
+  toast(`Copied to ${copy}. Results were not copied.`);
+  router();
+}
+
+async function archiveProject(name, archived) {
+  await api(`/api/projects/${name}/archive`, { method: 'POST', body: { archived } });
+  toast(archived ? `${name} archived.` : `${name} restored.`);
+  router();
+}
+
+async function deleteProject(name) {
+  const plan = await api(`/api/projects/${name}?dry_run=1`, { method: 'DELETE' });
+  await confirmDestructive({
+    title: `Delete ${name}?`,
+    plan,
+    typeToConfirm: name,
+    danger: 'Delete everything',
+    commit: async () => {
+      await api(`/api/projects/${name}`, { method: 'DELETE' });
+      toast(`${name} deleted.`);
+      router();
+    },
+  });
+}
+
+/* ----------------------------------------------------------- view: runs */
+
+async function viewAllRuns() {
+  crumbs({ label: 'Runs' });
+  const { projects } = await api('/api/projects');
+  const lists = await Promise.all(projects.map(async (p) => {
+    try {
+      const { runs } = await api(`/api/projects/${p.name}/runs?limit=25`);
+      return runs.map((r) => ({ ...r, project_name: p.name }));
+    } catch { return []; }
+  }));
+  const runs = lists.flat().sort((a, b) => String(b.started_at).localeCompare(String(a.started_at)));
+
+  app().innerHTML = `
+    <h1>Runs</h1>
+    <p class="lede">Every run across every evaluation, newest first.</p>
+    ${runs.length ? `
+      <div class="grid-scroll"><table class="data">
+        <thead><tr><th>when</th><th>evaluation</th><th>winner</th><th class="num">calls</th><th class="num">cost</th><th></th></tr></thead>
+        <tbody>${runs.map((r) => `
+          <tr>
+            <td>${esc(timeAgo(r.started_at))}${r.label ? `<br><span class="hint">${esc(r.label)}</span>` : ''}</td>
+            <td><a href="#/p/${esc(r.project_name)}" data-link>${esc(r.project_name)}</a></td>
+            <td>${esc(r.winner || '—')}</td>
+            <td class="num">${r.n_results ?? '—'}</td>
+            <td class="num">${r.total_cost_usd != null ? '$' + Number(r.total_cost_usd).toFixed(4) : '—'}</td>
+            <td class="row-actions">
+              <a class="btn btn-sm" href="#/p/${esc(r.project_name)}/cases/${esc(r.run_id)}" data-link>Cases</a>
+              <button class="btn btn-sm btn-danger" data-rmrun="${esc(r.run_id)}" data-proj="${esc(r.project_name)}">Delete</button>
+            </td>
+          </tr>`).join('')}</tbody>
+      </table></div>`
+      : '<div class="empty"><h2>No runs yet</h2></div>'}`;
+
+  app().querySelectorAll('[data-rmrun]').forEach((b) =>
+    b.addEventListener('click', () => deleteRun(b.dataset.proj, b.dataset.rmrun)));
+}
+
+async function deleteRun(project, runId) {
+  const plan = await api(`/api/projects/${project}/runs/${runId}?dry_run=1`, { method: 'DELETE' });
+  await confirmDestructive({
+    title: 'Delete this run?',
+    plan,
+    danger: 'Delete run',
+    commit: async () => {
+      await api(`/api/projects/${project}/runs/${runId}`, { method: 'DELETE' });
+      toast('Run deleted. It can be restored until you vacuum.');
+      router();
+    },
+  });
+}
+
+/* ------------------------------------------------- view: per-case grid */
+
+async function viewRunCases(name, runId) {
+  crumbs({ label: 'Projects', href: '#/projects' }, { label: name, href: `#/p/${name}` }, { label: 'Cases' });
+  const result = await api(`/api/projects/${name}/result?run_id=${encodeURIComponent(runId)}`);
+  const rows = result.results || [];
+
+  const byCase = new Map();
+  const models = [];
+  rows.forEach((r) => {
+    if (!models.includes(r.model_key)) models.push(r.model_key);
+    if (!byCase.has(r.test_id)) byCase.set(r.test_id, {});
+    const cell = byCase.get(r.test_id);
+    (cell[r.model_key] ||= []).push(r);
+  });
+
+  app().innerHTML = `
+    <h1>Every case, every model</h1>
+    <p class="lede">Where the models disagree is where the ranking is actually decided.
+    A case they all get right carries no information.</p>
+    ${byCase.size ? `
+      <div class="grid-scroll"><table class="data">
+        <thead><tr><th>case</th>${models.map((m) => `<th>${esc(m)}</th>`).join('')}</tr></thead>
+        <tbody>${[...byCase.entries()].map(([testId, cells]) => `
+          <tr>
+            <td><code>${esc(testId)}</code></td>
+            ${models.map((m) => {
+              const list = cells[m] || [];
+              if (!list.length) return '<td>—</td>';
+              const passed = list.filter((r) => r.passed).length;
+              const cls = passed === list.length ? 'ok' : (passed === 0 ? 'bad' : 'warn');
+              return `<td><span class="pill ${cls}">${passed}/${list.length}</span>
+                <br><span class="hint">${esc((list[0].output || '').slice(0, 40))}</span></td>`;
+            }).join('')}
+          </tr>`).join('')}</tbody>
+      </table></div>`
+      : '<div class="empty"><h2>No per-case detail stored for this run</h2></div>'}`;
+}
+
+/* ------------------------------------------------------ view: providers */
+
+async function viewProviders() {
+  crumbs({ label: 'Providers' });
+  const { providers } = await api('/api/providers');
+
+  app().innerHTML = `
+    <h1>Providers</h1>
+    <p class="lede">A profile is a named connection: an endpoint, a credential, and any
+    headers it needs. Two profiles can use the same vendor with different keys — that is
+    the whole reason they exist.</p>
+
+    ${providers.length ? `
+      <div class="grid-scroll"><table class="data">
+        <thead><tr><th>id</th><th>kind</th><th>endpoint</th><th>credential</th><th></th></tr></thead>
+        <tbody>${providers.map((p) => `
+          <tr>
+            <td><strong>${esc(p.id)}</strong></td>
+            <td>${esc(p.kind)}</td>
+            <td>${esc(p.base_url || 'vendor default')}</td>
+            <td><code>${esc(p.api_key_ref || 'conventional env var')}</code></td>
+            <td class="row-actions">
+              <button class="btn btn-sm" data-test="${esc(p.id)}">Test</button>
+              <button class="btn btn-sm btn-danger" data-rmprov="${esc(p.id)}">Remove</button>
+            </td>
+          </tr>`).join('')}</tbody>
+      </table></div>`
+      : '<p class="hint">No profiles yet. Models fall back to the vendor\'s conventional environment variable.</p>'}
+
+    <h2>Add a profile</h2>
+    <div class="card">
+      <div class="field"><label for="p-id">Name</label>
+        <input id="p-id" placeholder="work_openai"></div>
+      <div class="field"><label for="p-kind">Kind</label>
+        <select id="p-kind">
+          <option>openai</option><option>anthropic</option><option>gemini</option>
+          <option>openai_compatible</option><option>local</option><option>litellm</option>
+        </select></div>
+      <div class="field"><label for="p-url">Endpoint <span class="hint">optional</span></label>
+        <input id="p-url" placeholder="https://gateway.internal/v1"></div>
+      <div class="field">
+        <label for="p-key">Credential</label>
+        <input id="p-key" placeholder="\${env:OPENAI_API_KEY}">
+        <span class="hint">A reference is stored as written. A literal key is moved into
+        your OS keyring and only the reference is saved to disk.</span>
+      </div>
+      <p class="btn-row"><button class="btn btn-primary" id="p-save">Save profile</button></p>
+    </div>`;
+
+  app().querySelectorAll('[data-test]').forEach((b) => b.addEventListener('click', async () => {
+    b.disabled = true; b.textContent = 'Testing…';
+    try {
+      const report = await api(`/api/providers/${b.dataset.test}/test`, { method: 'POST' });
+      toast(report.ok ? `Reachable in ${report.latency_ms}ms.` : `Unreachable — ${report.error || report.status}`, !report.ok);
+    } finally { b.disabled = false; b.textContent = 'Test'; }
+  }));
+
+  app().querySelectorAll('[data-rmprov]').forEach((b) => b.addEventListener('click', async () => {
+    const id = b.dataset.rmprov;
+    const plan = await api(`/api/providers/${id}?dry_run=1`, { method: 'DELETE' });
+    await confirmDestructive({
+      title: `Remove provider ${id}?`,
+      plan,
+      danger: 'Remove',
+      commit: async () => {
+        await api(`/api/providers/${id}?purge_key=1`, { method: 'DELETE' });
+        toast(`Removed ${id} and its stored credential.`);
+        router();
+      },
+    });
+  }));
+
+  $('#p-save').addEventListener('click', async () => {
+    const body = {
+      id: $('#p-id').value.trim(),
+      kind: $('#p-kind').value,
+      base_url: $('#p-url').value.trim() || null,
+      api_key: $('#p-key').value.trim() || null,
+    };
+    if (!body.id) { toast('Give the profile a name.', true); return; }
+    await api('/api/providers', { method: 'POST', body });
+    toast(`Saved ${body.id}.`);
+    router();
+  });
+}
+
+/* ------------------------------------------------------- view: settings */
+
+const SETTINGS_TABS = [
+  ['general', 'General'],
+  ['defaults', 'Defaults'],
+  ['budgets', 'Budgets & safety'],
+  ['storage', 'Storage'],
+  ['about', 'About'],
+];
+
+async function viewSettings(tab = 'general') {
+  crumbs({ label: 'Settings' });
+  const settings = await api('/api/settings');
+  state.settings = settings;
+
+  const tabs = SETTINGS_TABS.map(([slug, label]) =>
+    `<a href="#/settings/${slug}" data-link class="${slug === tab ? 'on' : ''}">${esc(label)}</a>`).join('');
+
+  const panels = {
+    general: () => `
+      <div class="field"><label for="s-theme">Theme</label>
+        <select id="s-theme" data-set="theme">
+          ${['system', 'light', 'dark'].map((t) =>
+            `<option ${settings.theme === t ? 'selected' : ''}>${t}</option>`).join('')}
+        </select></div>
+      <div class="field"><label for="s-dir">Projects folder</label>
+        <input id="s-dir" data-set="projects_dir" value="${esc(settings.projects_dir || '')}">
+        <span class="hint">Where <code>arena ui</code> looks for evaluations.</span></div>`,
+
+    defaults: () => `
+      <p class="hint">Applied to new evaluations. An existing one keeps whatever its own config says.</p>
+      ${[['trials', 'Repeats per case'], ['concurrency', 'Calls in parallel'],
+         ['timeout_s', 'Timeout (seconds)'], ['retries', 'Retries']].map(([key, label]) => `
+        <div class="field"><label for="s-${key}">${esc(label)}</label>
+          <input id="s-${key}" type="number" data-set="${key}" value="${esc(settings[key] ?? '')}"></div>`).join('')}`,
+
+    budgets: () => `
+      <p class="hint">A cap stops the sweep mid-flight and keeps whatever it already
+      collected, labelled as partial. Leave blank for no cap.</p>
+      ${[['max_run_usd', 'Stop a run above ($)'], ['max_model_usd', 'Stop one model above ($)'],
+         ['confirm_above_usd', 'Ask before starting above ($)']].map(([key, label]) => `
+        <div class="field"><label for="s-${key}">${esc(label)}</label>
+          <input id="s-${key}" type="number" step="0.01" data-set="budgets.${key}"
+                 value="${esc(settings.budgets?.[key] ?? '')}"></div>`).join('')}`,
+
+    storage: () => `
+      <p class="hint">Every call is written to a SQLite database beside each evaluation.
+      Deleted runs stay recoverable until a vacuum removes them for good.</p>
+      <div class="card">
+        <p><strong>Reclaim space</strong></p>
+        <p class="hint">Permanently removes runs you have already deleted, in every evaluation.</p>
+        <p class="btn-row"><button class="btn btn-danger" id="s-vacuum">Vacuum all evaluations</button></p>
+      </div>`,
+
+    about: () => `
+      <div class="card">
+        <p><strong>Agent Arena</strong> <span id="about-version" class="hint"></span></p>
+        <p class="hint">Structured evidence over vibes. The browser and the command line
+        share one engine, so they can never disagree about who won.</p>
+        <p class="btn-row">
+          <a class="btn" href="https://adityamhaske.github.io/agent-arena" target="_blank" rel="noopener">Documentation</a>
+          <a class="btn" href="https://github.com/adityamhaske/agent-arena" target="_blank" rel="noopener">Source</a>
+        </p>
+      </div>`,
+  };
+
+  app().innerHTML = `
+    <h1>Settings</h1>
+    <div class="settings-tabs">${tabs}</div>
+    <div id="settings-panel">${(panels[tab] || panels.general)()}</div>
+    ${tab === 'storage' || tab === 'about' ? '' :
+      '<p class="btn-row"><button class="btn btn-primary" id="s-save">Save</button></p>'}`;
+
+  if ($('#about-version')) $('#about-version').textContent = state.version ? `v${state.version}` : '';
+
+  if ($('#s-save')) {
+    $('#s-save').addEventListener('click', async () => {
+      const patch = {};
+      app().querySelectorAll('[data-set]').forEach((el) => {
+        const raw = el.value.trim();
+        const value = el.type === 'number' ? (raw === '' ? null : Number(raw)) : raw;
+        const [head, tail] = el.dataset.set.split('.');
+        if (tail) { (patch[head] ||= { ...(state.settings[head] || {}) })[tail] = value; }
+        else { patch[head] = value; }
+      });
+      await api('/api/settings', { method: 'PUT', body: patch });
+      toast('Saved.');
+    });
+  }
+
+  if ($('#s-vacuum')) {
+    $('#s-vacuum').addEventListener('click', async () => {
+      const { projects } = await api('/api/projects');
+      let removed = 0;
+      for (const project of projects) {
+        try {
+          const plan = await api(`/api/projects/${project.name}/vacuum`, { method: 'POST' });
+          removed += plan.runs_removed || 0;
+        } catch { /* a project with no database yet has nothing to reclaim */ }
+      }
+      toast(removed ? `Permanently removed ${removed} deleted run(s).` : 'Nothing to reclaim.');
+    });
+  }
+}
+
+/* --------------------------------------------- view: models and scorers */
+
+async function viewModels() {
+  crumbs({ label: 'Models' });
+  const catalog = state.catalog || await api('/api/catalog');
+  const real = catalog.real_models || [];
+  const demo = catalog.demo_models || [];
+
+  app().innerHTML = `
+    <h1>Models</h1>
+    <p class="lede">What the price catalog knows. A model with no sourced price gets no cost
+    metric rather than a guessed one — which is why one unpriced model removes the cost
+    column for the whole run.</p>
+
+    <h2>Real models</h2>
+    ${real.length ? `
+      <div class="grid-scroll"><table class="data">
+        <thead><tr><th>model</th><th>provider</th><th class="num">in $/Mtok</th>
+          <th class="num">out $/Mtok</th><th class="num">context</th><th>credential</th></tr></thead>
+        <tbody>${real.map((m) => `
+          <tr>
+            <td><code>${esc(m.model)}</code>${m.display ? `<br><span class="hint">${esc(m.display)}</span>` : ''}</td>
+            <td>${esc(m.provider || '—')}</td>
+            <td class="num">${m.input_usd_per_mtok ?? '—'}</td>
+            <td class="num">${m.output_usd_per_mtok ?? '—'}</td>
+            <td class="num">${m.context_tokens ? Number(m.context_tokens).toLocaleString() : '—'}</td>
+            <td>${m.available
+                   ? '<span class="pill ok">ready</span>'
+                   : `<span class="pill warn">set ${esc(m.api_key_env || 'a key')}</span>`}</td>
+          </tr>`).join('')}</tbody>
+      </table></div>` : '<p class="hint">No catalog entries returned.</p>'}
+
+    <h2>Simulated models</h2>
+    <p class="hint">Deterministic and free. Use these to prove your scorers and weights
+    behave before spending anything on a real provider.</p>
+    ${demo.length ? `
+      <div class="grid-scroll"><table class="data">
+        <thead><tr><th>key</th><th>what it stands in for</th><th class="num">accuracy</th><th class="num">latency</th></tr></thead>
+        <tbody>${demo.map((m) => `
+          <tr>
+            <td><code>${esc(m.model)}</code></td>
+            <td>${esc(m.blurb || m.label || '')}</td>
+            <td class="num">${m.params?.accuracy != null ? m.params.accuracy + '%' : '—'}</td>
+            <td class="num">${m.params?.latency_ms != null ? m.params.latency_ms + 'ms' : '—'}</td>
+          </tr>`).join('')}</tbody>
+      </table></div>` : ''}`;
+}
+
+async function viewScorers() {
+  crumbs({ label: 'Scorers' });
+  const catalog = state.catalog || await api('/api/catalog');
+  const scorers = catalog.scorers || catalog.eval_types || [];
+  app().innerHTML = `
+    <h1>Scorers</h1>
+    <p class="lede">How an answer is graded. Pick the one that matches the shape of a correct
+    answer, not the one that sounds most sophisticated.</p>
+    ${scorers.length ? `
+      <div class="grid-scroll"><table class="data">
+        <thead><tr><th>eval type</th><th>what it does</th></tr></thead>
+        <tbody>${scorers.map((sc) => `
+          <tr><td><code>${esc(sc.name || sc)}</code></td>
+              <td>${esc(sc.description || sc.what || '')}</td></tr>`).join('')}</tbody>
+      </table></div>` : '<p class="hint">No scorer metadata returned.</p>'}`;
+}
+
 /* ---------------------------------------------------------------- boot */
 
 window.addEventListener('hashchange', router);
 
+$('#nav-toggle').addEventListener('click', () => {
+  const nav = $('#sidenav');
+  const open = nav.classList.toggle('open');
+  $('#nav-toggle').setAttribute('aria-expanded', String(open));
+});
+
+$('#modal').addEventListener('click', (event) => { if (event.target.id === 'modal') closeModal(); });
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !$('#modal').hidden) closeModal();
+});
+
 (async function start() {
   try {
     state.catalog = await api('/api/catalog');
+    // The catalog carries no version, but the server stamps one onto the asset
+    // URLs — a single source rather than a second thing to keep in sync.
+    const stamped = document.querySelector('link[href*="app.css"]')?.getAttribute('href') || '';
+    const version = (stamped.match(/[?&]v=([^&]+)/) || [])[1];
+    if (version) {
+      state.version = version;
+      $('#version').textContent = `v${version}`;
+    }
   } catch (error) {
     app().innerHTML = `<div class="card"><h2>Cannot reach the server</h2><p>${esc(error.message)}</p></div>`;
     return;

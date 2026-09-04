@@ -373,6 +373,10 @@ class ArenaAPI:
             "started_at": row.get("started_at"),
             "winner": row.get("winner"),
             "status": row.get("status"),
+            # The overview shows spend per evaluation; without these two it
+            # would render an empty column rather than a number.
+            "total_cost_usd": row.get("total_cost_usd"),
+            "n_results": row.get("n_results"),
         }
 
     def describe_project(self, name: str) -> dict[str, Any]:
@@ -657,6 +661,38 @@ class ArenaAPI:
             config.results_dir / "exports",
         )
         return {"path": str(path), "format": query.get("format", "html")}
+
+    # ---- providers -----------------------------------------------------
+
+    def list_providers(self) -> dict[str, Any]:
+        from ..service import providers as svc  # noqa: PLC0415
+
+        return {"providers": [p.to_dict() for p in svc.user_providers()]}
+
+    def save_provider(self, body: dict[str, Any]) -> dict[str, Any]:
+        from ..service import providers as svc  # noqa: PLC0415
+
+        return svc.save_provider(body).to_dict()
+
+    def delete_provider(self, provider_id: str, query: dict[str, Any] | None = None) -> dict[str, Any]:
+        from ..service import providers as svc  # noqa: PLC0415
+
+        query = query or {}
+        return svc.delete_provider(
+            provider_id,
+            purge_key=_flag(query.get("purge_key")),
+            dry_run=_flag(query.get("dry_run")),
+        )
+
+    def test_provider(self, provider_id: str) -> dict[str, Any]:
+        from ..service import providers as svc  # noqa: PLC0415
+
+        return svc.health_check(svc.get_provider(provider_id))
+
+    def discover_provider_models(self, provider_id: str) -> dict[str, Any]:
+        from ..service import providers as svc  # noqa: PLC0415
+
+        return {"models": svc.discover_models(svc.get_provider(provider_id))}
 
     def settings(self) -> dict[str, Any]:
         from ..service import settings as svc  # noqa: PLC0415

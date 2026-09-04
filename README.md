@@ -206,7 +206,7 @@ The arena inverts that. It knows nothing about any task:
 | `projects/doc_extraction/` | Example 2 — structured JSON extraction, offline |
 | `projects/local_demo/` | Example 3 — models on your own machine |
 | `projects/pipeline_demo/` | Example 4 — comparing multi-agent architectures, offline |
-| `tests/` | 697 tests covering the engine, service layer, targets and the UI |
+| `tests/` | 709 tests covering the engine, service layer, targets and the UI |
 
 ## How to use it
 
@@ -509,7 +509,7 @@ agent_arena/service/            project/run lifecycle,      │
                                  secrets, providers, export  │
 agent_arena/web/                the browser UI (`arena ui`) ├─ Universal Arena
 projects/                       example + your projects     │
-tests/                          697 engine + UI tests       │
+tests/                          709 engine + UI tests       │
 demo/  demo.md                  local-model walkthrough    ─┘
 .github/actions/agent-arena-eval/  the published GitHub Action
 
@@ -560,7 +560,7 @@ Before you push:
 
 ```bash
 pip install -e ".[dev]"
-pytest -q                                                 # 697 tests, offline, ~38s
+pytest -q                                                 # 709 tests, offline, ~38s
 arena validate --project projects/support_triage
 arena evaluate --project projects/support_triage --quiet --no-report
 ```
