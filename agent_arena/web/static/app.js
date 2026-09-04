@@ -2252,11 +2252,36 @@ function renderProviderForm(profile) {
 /* ------------------------------------------------------- view: settings */
 
 const SETTINGS_TABS = [
-  ['general', 'General', 'Preferences & appearance'],
-  ['defaults', 'Defaults', 'Default sweep parameters'],
-  ['budgets', 'Budgets & safety', 'Spending caps & thresholds'],
-  ['storage', 'Storage', 'Database cleanup & vacuum'],
-  ['about', 'About', 'Engine version & docs'],
+  [
+    'general',
+    'General',
+    'Preferences & appearance',
+    `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`
+  ],
+  [
+    'defaults',
+    'Defaults',
+    'Default sweep parameters',
+    `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7"/><path d="M4 10V3"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M20 21v-5"/><path d="M20 12V3"/><path d="M1 14h6"/><path d="M9 8h6"/><path d="M17 16h6"/></svg>`
+  ],
+  [
+    'budgets',
+    'Budgets & safety',
+    'Spending caps & thresholds',
+    `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`
+  ],
+  [
+    'storage',
+    'Storage',
+    'Database cleanup & vacuum',
+    `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>`
+  ],
+  [
+    'about',
+    'About',
+    'Engine version & docs',
+    `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`
+  ],
 ];
 
 async function viewSettings(tab = 'general') {
@@ -2264,8 +2289,8 @@ async function viewSettings(tab = 'general') {
   const [settings, about] = await Promise.all([
     api('/api/settings'),
     api('/api/about').catch(() => ({
-      version: state.catalog?.version || '2.0.0rc1',
-      release_channel: 'Release Candidate (v2.0.0rc1)',
+      version: state.catalog?.version || '2.0.0rc2',
+      release_channel: 'Release Candidate (v2.0.0rc2)',
       license: 'MIT',
       author: 'Aditya Mhaske',
       python: '3.12+',
@@ -2281,173 +2306,361 @@ async function viewSettings(tab = 'general') {
   ]);
   state.settings = settings;
 
-  const tabs = SETTINGS_TABS.map(([slug, label, desc]) => `
+  const tabs = SETTINGS_TABS.map(([slug, label, desc, iconSvg]) => `
     <a href="#/settings/${slug}" data-link class="settings-nav-item ${slug === tab ? 'on' : ''}">
-      <span class="settings-nav-title">${esc(label)}</span>
-      <span class="settings-nav-desc">${esc(desc)}</span>
+      <div class="settings-nav-icon">${iconSvg}</div>
+      <div class="settings-nav-text">
+        <span class="settings-nav-title">${esc(label)}</span>
+        <span class="settings-nav-desc">${esc(desc)}</span>
+      </div>
     </a>`).join('');
+
+  const currentTheme = storedTheme() || settings.theme || 'system';
 
   const panels = {
     general: () => `
-      <h2>Workspace & Appearance</h2>
-      <p class="hint">Global interface preferences, directories, and workspace behavior.</p>
+      <div class="settings-card">
+        <div class="settings-card-header">
+          <div class="settings-card-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg>
+          </div>
+          <div>
+            <h3>Theme & Appearance</h3>
+            <p>Customize color palette, layout density, and data formatting.</p>
+          </div>
+        </div>
 
-      <div class="field">
-        <label for="s-theme">Theme</label>
-        <select id="s-theme" data-set="theme" data-applies-now="theme">
-          ${['system', 'light', 'dark'].map((t) =>
-            `<option value="${t}" ${settings.theme === t ? 'selected' : ''}>${t.charAt(0).toUpperCase() + t.slice(1)}</option>`).join('')}
-        </select>
-        <span class="hint">Color scheme for the evaluation studio interface.</span>
+        <div style="margin-bottom:1.35rem;">
+          <label class="setting-group-label">Color Theme</label>
+          <div class="theme-picker" role="radiogroup" aria-label="Color theme">
+            <button type="button" class="theme-card ${currentTheme === 'system' ? 'active' : ''}" data-theme-val="system" role="radio" aria-checked="${currentTheme === 'system'}">
+              <div class="theme-preview preview-system">
+                <div class="mini-window">
+                  <div class="mini-header"><span class="mini-dot"></span><span class="mini-bar"></span></div>
+                  <div class="mini-body"><div class="mini-col-l"></div><div class="mini-col-r"></div></div>
+                </div>
+              </div>
+              <div class="theme-card-info">
+                <div class="theme-card-title">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                  <span>System</span>
+                </div>
+                <span class="theme-card-desc">Matches OS appearance</span>
+              </div>
+              <div class="theme-card-check">✓</div>
+            </button>
+
+            <button type="button" class="theme-card ${currentTheme === 'light' ? 'active' : ''}" data-theme-val="light" role="radio" aria-checked="${currentTheme === 'light'}">
+              <div class="theme-preview preview-light">
+                <div class="mini-window">
+                  <div class="mini-header"><span class="mini-dot"></span><span class="mini-bar"></span></div>
+                  <div class="mini-body"><div class="mini-card-l"></div><div class="mini-card-r"></div></div>
+                </div>
+              </div>
+              <div class="theme-card-info">
+                <div class="theme-card-title">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                  <span>Light</span>
+                </div>
+                <span class="theme-card-desc">Crisp daylight clarity</span>
+              </div>
+              <div class="theme-card-check">✓</div>
+            </button>
+
+            <button type="button" class="theme-card ${currentTheme === 'dark' ? 'active' : ''}" data-theme-val="dark" role="radio" aria-checked="${currentTheme === 'dark'}">
+              <div class="theme-preview preview-dark">
+                <div class="mini-window">
+                  <div class="mini-header"><span class="mini-dot"></span><span class="mini-bar"></span></div>
+                  <div class="mini-body"><div class="mini-card-l"></div><div class="mini-card-r"></div></div>
+                </div>
+              </div>
+              <div class="theme-card-info">
+                <div class="theme-card-title">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+                  <span>Dark</span>
+                </div>
+                <span class="theme-card-desc">Deep slate contrast</span>
+              </div>
+              <div class="theme-card-check">✓</div>
+            </button>
+          </div>
+
+          <select id="s-theme" data-set="theme" style="display:none;">
+            <option value="system" ${currentTheme === 'system' ? 'selected' : ''}>System</option>
+            <option value="light" ${currentTheme === 'light' ? 'selected' : ''}>Light</option>
+            <option value="dark" ${currentTheme === 'dark' ? 'selected' : ''}>Dark</option>
+          </select>
+        </div>
+
+        <div class="settings-grid-3">
+          <div class="field">
+            <label for="s-density">UI density</label>
+            <select id="s-density" data-set="density">
+              <option value="comfortable" ${settings.density === 'comfortable' ? 'selected' : ''}>Comfortable (Standard)</option>
+              <option value="compact" ${settings.density === 'compact' ? 'selected' : ''}>Compact (Dense tables)</option>
+            </select>
+            <span class="hint">Row height and card padding</span>
+          </div>
+
+          <div class="field">
+            <label for="s-num-fmt">Thousands separator</label>
+            <select id="s-num-fmt" data-set="number_format">
+              <option value="comma" ${settings.number_format === 'comma' ? 'selected' : ''}>Comma (1,000,000)</option>
+              <option value="space" ${settings.number_format === 'space' ? 'selected' : ''}>Space (1 000 000)</option>
+              <option value="none" ${settings.number_format === 'none' ? 'selected' : ''}>None (1000000)</option>
+            </select>
+            <span class="hint">Formatting for token and metric counts</span>
+          </div>
+
+          <div class="field">
+            <label for="s-tz">Display timezone</label>
+            <select id="s-tz" data-set="timezone">
+              <option value="local" ${settings.timezone === 'local' ? 'selected' : ''}>Local (${Intl.DateTimeFormat().resolvedOptions().timeZone || 'System'})</option>
+              <option value="UTC" ${settings.timezone === 'UTC' ? 'selected' : ''}>UTC (Universal Time)</option>
+            </select>
+            <span class="hint">Timezone used when displaying dates</span>
+          </div>
+        </div>
       </div>
 
-      <div class="field">
-        <label for="s-dir">Evaluations folder</label>
-        <input id="s-dir" data-set="projects_dir" value="${esc(settings.projects_dir || 'projects')}">
-        <span class="hint">Directory path relative to current workspace where evaluations live.</span>
+      <div class="settings-card">
+        <div class="settings-card-header">
+          <div class="settings-card-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <div>
+            <h3>Workspace & Navigation</h3>
+            <p>Evaluation suite location and initial default view.</p>
+          </div>
+        </div>
+
+        <div class="settings-grid-2">
+          <div class="field">
+            <label for="s-dir">Evaluations folder</label>
+            <div class="input-with-prefix">
+              <span class="input-prefix font-mono">📁 ./</span>
+              <input id="s-dir" data-set="projects_dir" value="${esc(settings.projects_dir || 'projects')}" placeholder="projects">
+            </div>
+            <span class="hint">Relative directory where evaluations live</span>
+          </div>
+
+          <div class="field">
+            <label for="s-landing">Default landing view</label>
+            <select id="s-landing" data-set="default_landing">
+              <option value="overview" ${settings.default_landing === 'overview' ? 'selected' : ''}>Overview Dashboard (#/)</option>
+              <option value="projects" ${settings.default_landing === 'projects' ? 'selected' : ''}>Evaluations Directory (#/projects)</option>
+              <option value="runs" ${settings.default_landing === 'runs' ? 'selected' : ''}>Global Runs Stream (#/runs)</option>
+            </select>
+            <span class="hint">Initial surface displayed on launch</span>
+          </div>
+        </div>
       </div>
 
-      <div class="field">
-        <label for="s-landing">Default landing view</label>
-        <select id="s-landing" data-set="default_landing">
-          <option value="overview" ${settings.default_landing === 'overview' ? 'selected' : ''}>Overview Dashboard (#/)</option>
-          <option value="projects" ${settings.default_landing === 'projects' ? 'selected' : ''}>Evaluations Directory (#/projects)</option>
-          <option value="runs" ${settings.default_landing === 'runs' ? 'selected' : ''}>Global Runs Stream (#/runs)</option>
-        </select>
-        <span class="hint">Initial surface displayed when launching Agent Arena.</span>
-      </div>
+      <div class="settings-card">
+        <div class="settings-card-header">
+          <div class="settings-card-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><polyline points="8 12 12 16 16 12"/><line x1="12" y1="8" x2="12" y2="16"/></svg>
+          </div>
+          <div>
+            <h3>CLI Engine & Automation</h3>
+            <p>Terminal verbosity and launch automation toggles.</p>
+          </div>
+        </div>
 
-      <div class="field">
-        <label for="s-density">UI density</label>
-        <select id="s-density" data-set="density">
-          <option value="comfortable" ${settings.density === 'comfortable' ? 'selected' : ''}>Comfortable (Standard padding)</option>
-          <option value="compact" ${settings.density === 'compact' ? 'selected' : ''}>Compact (Dense, information-heavy tables)</option>
-        </select>
-        <span class="hint">Controls row height and card margins across leaderboard tables.</span>
-      </div>
+        <div class="field" style="margin-bottom:1.25rem;">
+          <label for="s-log_level">Engine log level</label>
+          <select id="s-log_level" data-set="log_level" style="max-width:420px;">
+            <option value="warning" ${settings.log_level === 'warning' ? 'selected' : ''}>Warning (Quiet — recommended for clean CLI output)</option>
+            <option value="info" ${settings.log_level === 'info' ? 'selected' : ''}>Info (Standard execution status)</option>
+            <option value="debug" ${settings.log_level === 'debug' ? 'selected' : ''}>Debug (Verbose API traces)</option>
+            <option value="error" ${settings.log_level === 'error' ? 'selected' : ''}>Error (Fatal errors only)</option>
+          </select>
+          <span class="hint">Controls stdout verbosity during CLI sweeps and background jobs</span>
+        </div>
 
-      <div class="field">
-        <label for="s-num-fmt">Thousands separator</label>
-        <select id="s-num-fmt" data-set="number_format">
-          <option value="comma" ${settings.number_format === 'comma' ? 'selected' : ''}>Comma (1,000,000)</option>
-          <option value="space" ${settings.number_format === 'space' ? 'selected' : ''}>Space (1 000 000)</option>
-          <option value="none" ${settings.number_format === 'none' ? 'selected' : ''}>None (1000000)</option>
-        </select>
-        <span class="hint">Formatting style for counts and tokens in benchmark results.</span>
-      </div>
+        <div class="settings-toggle-group">
+          <div class="settings-toggle-row">
+            <div class="toggle-info">
+              <span class="toggle-title">Open browser automatically</span>
+              <span class="toggle-desc">Automatically launch Agent Arena in your default browser on <code>arena ui</code> launch</span>
+            </div>
+            <label class="toggle-switch" for="s-open_browser">
+              <input type="checkbox" id="s-open_browser" data-set="open_browser" ${settings.open_browser !== false ? 'checked' : ''}>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
 
-      <div class="field">
-        <label for="s-tz">Display timezone</label>
-        <select id="s-tz" data-set="timezone">
-          <option value="local" ${settings.timezone === 'local' ? 'selected' : ''}>Local system time (${Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local'})</option>
-          <option value="UTC" ${settings.timezone === 'UTC' ? 'selected' : ''}>UTC (Coordinated Universal Time)</option>
-        </select>
-        <span class="hint">Timezone used when rendering timestamps across the UI.</span>
-      </div>
-
-      <div class="field">
-        <label for="s-log_level">Engine log level</label>
-        <select id="s-log_level" data-set="log_level">
-          <option value="warning" ${settings.log_level === 'warning' ? 'selected' : ''}>Warning (Quiet — only warnings and errors)</option>
-          <option value="info" ${settings.log_level === 'info' ? 'selected' : ''}>Info (Standard execution status)</option>
-          <option value="debug" ${settings.log_level === 'debug' ? 'selected' : ''}>Debug (Verbose API completion traces)</option>
-          <option value="error" ${settings.log_level === 'error' ? 'selected' : ''}>Error (Strict fatal errors only)</option>
-        </select>
-        <span class="hint">Controls stdout verbosity during CLI sweeps and background jobs.</span>
-      </div>
-
-      <div class="field checkbox-field">
-        <label class="check">
-          <input type="checkbox" id="s-open_browser" data-set="open_browser" ${settings.open_browser !== false ? 'checked' : ''}>
-          <span>Open browser window automatically on <code>arena ui</code> launch</span>
-        </label>
-      </div>
-
-      <div class="field checkbox-field">
-        <label class="check">
-          <input type="checkbox" id="s-update_check" data-set="update_check" ${settings.update_check !== false ? 'checked' : ''}>
-          <span>Check for newer versions of Agent Arena on launch</span>
-        </label>
+          <div class="settings-toggle-row">
+            <div class="toggle-info">
+              <span class="toggle-title">Check for newer versions</span>
+              <span class="toggle-desc">Check PyPI for newer versions of Agent Arena on startup</span>
+            </div>
+            <label class="toggle-switch" for="s-update_check">
+              <input type="checkbox" id="s-update_check" data-set="update_check" ${settings.update_check !== false ? 'checked' : ''}>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
       </div>`,
 
     defaults: () => `
-      <h2>Default Sweep Parameters</h2>
-      <p class="hint">Applied as default seeds when creating new evaluations. Existing evaluations preserve the values in their <code>config.yaml</code>.</p>
+      <div class="settings-card">
+        <div class="settings-card-header">
+          <div class="settings-card-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </div>
+          <div>
+            <h3>Execution & Concurrency Seeds</h3>
+            <p>Applied when scaffolding new evaluations. Existing evaluations preserve their <code>config.yaml</code>.</p>
+          </div>
+        </div>
 
-      <div class="field">
-        <label for="s-trials">Repeats per test case (Trials)</label>
-        <input id="s-trials" type="number" min="1" max="50" data-set="defaults.trials" value="${esc(settings.defaults?.trials ?? 1)}">
-        <span class="hint">Number of times each model runs against each test prompt to detect non-deterministic variance.</span>
+        <div class="settings-grid-2">
+          <div class="field">
+            <label for="s-trials">Repeats per test case (Trials)</label>
+            <div class="input-with-suffix">
+              <input id="s-trials" type="number" min="1" max="50" data-set="defaults.trials" value="${esc(settings.defaults?.trials ?? 1)}">
+              <span class="input-suffix">trials</span>
+            </div>
+            <span class="hint">Repeats each test prompt to detect non-deterministic variance</span>
+          </div>
+
+          <div class="field">
+            <label for="s-concurrency">Concurrent model calls</label>
+            <div class="input-with-suffix">
+              <input id="s-concurrency" type="number" min="1" max="64" data-set="defaults.concurrency" value="${esc(settings.defaults?.concurrency ?? 4)}">
+              <span class="input-suffix">workers</span>
+            </div>
+            <span class="hint">Max simultaneous in-flight provider API calls</span>
+          </div>
+
+          <div class="field">
+            <label for="s-timeout">Per-call timeout</label>
+            <div class="input-with-suffix">
+              <input id="s-timeout" type="number" min="5" max="600" data-set="defaults.timeout_s" value="${esc(settings.defaults?.timeout_s ?? 120)}">
+              <span class="input-suffix">seconds</span>
+            </div>
+            <span class="hint">Ceiling before timing out an LLM response</span>
+          </div>
+
+          <div class="field">
+            <label for="s-retries">Retries after provider error</label>
+            <div class="input-with-suffix">
+              <input id="s-retries" type="number" min="0" max="10" data-set="defaults.retries" value="${esc(settings.defaults?.retries ?? 2)}">
+              <span class="input-suffix">retries</span>
+            </div>
+            <span class="hint">Exponential backoff on transient 429 or 503 status codes</span>
+          </div>
+        </div>
       </div>
 
-      <div class="field">
-        <label for="s-concurrency">Concurrent model calls</label>
-        <input id="s-concurrency" type="number" min="1" max="64" data-set="defaults.concurrency" value="${esc(settings.defaults?.concurrency ?? 4)}">
-        <span class="hint">Max simultaneous in-flight provider API calls. Keep within your provider tier rate limits.</span>
-      </div>
+      <div class="settings-card">
+        <div class="settings-card-header">
+          <div class="settings-card-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+          </div>
+          <div>
+            <h3>Sampling & Output Constraints</h3>
+            <p>Default generative hyperparameters for reproducible evaluation.</p>
+          </div>
+        </div>
 
-      <div class="field">
-        <label for="s-timeout">Per-call timeout (seconds)</label>
-        <input id="s-timeout" type="number" min="5" max="600" data-set="defaults.timeout_s" value="${esc(settings.defaults?.timeout_s ?? 120)}">
-        <span class="hint">Time ceiling for an LLM response before timing out.</span>
-      </div>
+        <div class="settings-grid-2">
+          <div class="field">
+            <label for="s-temperature">Sampling temperature</label>
+            <div class="input-with-suffix">
+              <input id="s-temperature" type="number" min="0" max="2" step="0.1" data-set="defaults.temperature" value="${esc(settings.defaults?.temperature ?? 0)}">
+              <span class="input-suffix">temp</span>
+            </div>
+            <span class="hint">Evaluations default to 0 for maximum determinism and scoring reproducibility</span>
+          </div>
 
-      <div class="field">
-        <label for="s-retries">Retries after provider error</label>
-        <input id="s-retries" type="number" min="0" max="10" data-set="defaults.retries" value="${esc(settings.defaults?.retries ?? 2)}">
-        <span class="hint">Automatic exponential backoff retries when a provider returns transient 429 or 503 status codes.</span>
-      </div>
-
-      <div class="field">
-        <label for="s-temperature">Sampling temperature</label>
-        <input id="s-temperature" type="number" min="0" max="2" step="0.1" data-set="defaults.temperature" value="${esc(settings.defaults?.temperature ?? 0)}">
-        <span class="hint">Evaluations default to 0 for maximum determinism and reproducible scoring.</span>
-      </div>
-
-      <div class="field">
-        <label for="s-tokens">Max tokens ceiling</label>
-        <input id="s-tokens" type="number" min="16" max="32768" data-set="defaults.max_tokens" value="${esc(settings.defaults?.max_tokens ?? 512)}">
-        <span class="hint">Safety completion token ceiling per test prompt.</span>
+          <div class="field">
+            <label for="s-tokens">Max tokens ceiling</label>
+            <div class="input-with-suffix">
+              <input id="s-tokens" type="number" min="16" max="32768" data-set="defaults.max_tokens" value="${esc(settings.defaults?.max_tokens ?? 512)}">
+              <span class="input-suffix">tokens</span>
+            </div>
+            <span class="hint">Safety completion token ceiling per test prompt</span>
+          </div>
+        </div>
       </div>`,
 
     budgets: () => `
-      <h2>Spending Caps & Safety</h2>
-      <p class="hint">Safety limits and confirmation thresholds. When a cap is reached, already completed calls are retained and marked as partial.</p>
+      <div class="settings-card">
+        <div class="settings-card-header">
+          <div class="settings-card-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          </div>
+          <div>
+            <h3>Spending Ceilings</h3>
+            <p>Hard limits to prevent accidental runaway costs during large matrix sweeps.</p>
+          </div>
+        </div>
 
-      <div class="field">
-        <label for="s-max_run_usd">Max spend per sweep run ($)</label>
-        <input id="s-max_run_usd" type="number" step="0.01" min="0" placeholder="No limit" data-set="budgets.max_run_usd" value="${esc(settings.budgets?.max_run_usd ?? '')}">
-        <span class="hint">Hard dollar ceiling. The sweep stops if the total run cost crosses this limit. Leave empty for no cap.</span>
+        <div class="settings-grid-3">
+          <div class="field">
+            <label for="s-max_run_usd">Max spend per sweep run</label>
+            <div class="input-with-prefix">
+              <span class="input-prefix font-mono">$</span>
+              <input id="s-max_run_usd" type="number" step="0.01" min="0" placeholder="No limit" data-set="budgets.max_run_usd" value="${esc(settings.budgets?.max_run_usd ?? '')}">
+            </div>
+            <span class="hint">Hard dollar ceiling for the entire sweep</span>
+          </div>
+
+          <div class="field">
+            <label for="s-max_model_usd">Max spend per model</label>
+            <div class="input-with-prefix">
+              <span class="input-prefix font-mono">$</span>
+              <input id="s-max_model_usd" type="number" step="0.01" min="0" placeholder="No limit" data-set="budgets.max_model_usd" value="${esc(settings.budgets?.max_model_usd ?? '')}">
+            </div>
+            <span class="hint">Ceiling per single model in a sweep</span>
+          </div>
+
+          <div class="field">
+            <label for="s-confirm_above_usd">Confirmation prompt threshold</label>
+            <div class="input-with-prefix">
+              <span class="input-prefix font-mono">$</span>
+              <input id="s-confirm_above_usd" type="number" step="0.01" min="0" data-set="budgets.confirm_above_usd" value="${esc(settings.budgets?.confirm_above_usd ?? 5.0)}">
+            </div>
+            <span class="hint">UI asks for confirmation if forecast exceeds this</span>
+          </div>
+        </div>
       </div>
 
-      <div class="field">
-        <label for="s-max_model_usd">Max spend per individual model ($)</label>
-        <input id="s-max_model_usd" type="number" step="0.01" min="0" placeholder="No limit" data-set="budgets.max_model_usd" value="${esc(settings.budgets?.max_model_usd ?? '')}">
-        <span class="hint">Ceiling per single model. Other cheaper models will continue evaluating.</span>
-      </div>
+      <div class="settings-card">
+        <div class="settings-card-header">
+          <div class="settings-card-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <div>
+            <h3>Budget Exceeded Policy</h3>
+            <p>Execution behavior when a sweep forecast or live call crosses a budget limit.</p>
+          </div>
+        </div>
 
-      <div class="field">
-        <label for="s-confirm_above_usd">Confirmation prompt threshold ($)</label>
-        <input id="s-confirm_above_usd" type="number" step="0.01" min="0" data-set="budgets.confirm_above_usd" value="${esc(settings.budgets?.confirm_above_usd ?? 5.0)}">
-        <span class="hint">The UI asks for explicit confirmation before launching a sweep forecast above this amount.</span>
-      </div>
-
-      <div class="field">
-        <label for="s-on_exceed">Budget exceed policy</label>
-        <select id="s-on_exceed" data-set="budgets.on_exceed">
-          <option value="stop" ${settings.budgets?.on_exceed === 'stop' ? 'selected' : ''}>Stop sweep immediately (Conservative)</option>
-          <option value="warn" ${settings.budgets?.on_exceed === 'warn' ? 'selected' : ''}>Log budget warning and continue</option>
-        </select>
-        <span class="hint">Action to take when a model or run crosses the defined dollar budget.</span>
+        <div class="field" style="max-width:440px;">
+          <label for="s-on_exceed">Budget exceed policy</label>
+          <select id="s-on_exceed" data-set="budgets.on_exceed">
+            <option value="stop" ${settings.budgets?.on_exceed === 'stop' ? 'selected' : ''}>Stop sweep immediately (Conservative — avoids excess spend)</option>
+            <option value="warn" ${settings.budgets?.on_exceed === 'warn' ? 'selected' : ''}>Log budget warning and continue sweep</option>
+          </select>
+          <span class="hint">When stopped early, calls already completed are preserved and marked partial</span>
+        </div>
       </div>`,
 
     storage: () => `
-      <h2>Database & Local Storage</h2>
-      <p class="hint">Agent Arena runs locally with zero external telemetry. All benchmark results, generated outputs, token counts, and latencies are persisted to local SQLite databases.</p>
-
-      <div class="card" style="margin-bottom:1.25rem;">
-        <h3 style="margin-bottom:0.35rem;">Local SQLite Architecture</h3>
-        <p class="small text-dim" style="margin-bottom:0.75rem;">
+      <div class="settings-card">
+        <div class="settings-card-header">
+          <div class="settings-card-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+          </div>
+          <div>
+            <h3>Local SQLite Architecture</h3>
+            <p>Agent Arena runs offline with zero telemetry. All benchmark data is kept 100% local.</p>
+          </div>
+        </div>
+        <p class="small text-dim" style="margin-bottom:1rem;">
           Each evaluation stores its results in <code>&lt;project&gt;/results/arena.sqlite</code> with Write-Ahead Logging (WAL) for safe multi-process concurrency.
         </p>
         <div class="stat-pill-row">
@@ -2457,17 +2670,33 @@ async function viewSettings(tab = 'general') {
         </div>
       </div>
 
-      <div class="card" style="margin-bottom:1.25rem;">
-        <h3 style="margin-bottom:0.35rem;">Reclaim Disk Space (Vacuum)</h3>
-        <p class="small text-dim" style="margin-bottom:0.85rem;">
+      <div class="settings-card">
+        <div class="settings-card-header">
+          <div class="settings-card-icon" style="background:var(--warn-soft);color:var(--warn);">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          </div>
+          <div>
+            <h3>Reclaim Disk Space (Vacuum)</h3>
+            <p>Purge deleted runs and compact database files on disk.</p>
+          </div>
+        </div>
+        <p class="small text-dim" style="margin-bottom:1rem;">
           When you delete runs, SQLite retains tombstones so they can be reviewed or exported. Vacuum permanently purges deleted runs and compacts database files on disk.
         </p>
         <p class="btn-row"><button class="btn btn-danger" id="s-vacuum">Vacuum all evaluation databases</button></p>
       </div>
 
-      <div class="card">
-        <h3 style="margin-bottom:0.35rem;">Factory Reset</h3>
-        <p class="small text-dim" style="margin-bottom:0.85rem;">
+      <div class="settings-card">
+        <div class="settings-card-header">
+          <div class="settings-card-icon" style="background:var(--bad-soft);color:var(--bad);">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+          </div>
+          <div>
+            <h3>Factory Reset</h3>
+            <p>Restore global preferences to factory defaults.</p>
+          </div>
+        </div>
+        <p class="small text-dim" style="margin-bottom:1rem;">
           Reset all user preferences, spending caps, and runner defaults back to factory settings. Project <code>config.yaml</code> files will remain untouched.
         </p>
         <p class="btn-row"><button class="btn btn-outline-danger" id="s-reset">Reset settings to defaults</button></p>
@@ -2589,8 +2818,8 @@ async function viewSettings(tab = 'general') {
   app().innerHTML = `
     <div class="head-row" style="margin-bottom:1.5rem;">
       <div>
-        <h1>Settings</h1>
-        <p class="lede">Configure default runner parameters, global spending caps, storage cleanup, and workspace preferences.</p>
+        <h1 style="font-size:1.6rem;margin-bottom:0.25rem;">Settings</h1>
+        <p class="lede" style="font-size:0.95rem;margin:0;">Configure global appearance, runner seeds, spend caps, and workspace directories.</p>
       </div>
     </div>
     <div class="settings-layout">
@@ -2600,19 +2829,40 @@ async function viewSettings(tab = 'general') {
       <div class="settings-content-wrapper">
         <div id="settings-panel">${(panels[tab] || panels.general)()}</div>
         ${tab === 'storage' || tab === 'about' ? '' :
-          '<p class="btn-row" style="margin-top:1.5rem;"><button class="btn btn-primary" id="s-save">Save changes</button></p>'}
+          `<div class="settings-footer-bar">
+            <div class="settings-footer-meta">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              <span>Saved locally to <code>settings.json</code></span>
+            </div>
+            <button class="btn btn-primary btn-save" id="s-save">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              <span>Save changes</span>
+            </button>
+          </div>`}
       </div>
     </div>`;
 
-  /* Theme select inside general settings tab */
+  /* Theme cards & select inside general settings tab */
+  const themeCards = app().querySelectorAll('.theme-card');
   const themeSelect = $('#s-theme');
   if (themeSelect) {
-    themeSelect.value = storedTheme();
-    themeSelect.addEventListener('change', () => {
-      try { localStorage.setItem('arena-theme', themeSelect.value); } catch { /* private mode */ }
-      applyTheme(themeSelect.value);
-    });
+    themeSelect.value = currentTheme;
   }
+  themeCards.forEach((card) => {
+    card.addEventListener('click', () => {
+      const chosen = card.dataset.themeVal;
+      themeCards.forEach((c) => {
+        const isSelected = c === card;
+        c.classList.toggle('active', isSelected);
+        c.setAttribute('aria-checked', String(isSelected));
+      });
+      if (themeSelect) {
+        themeSelect.value = chosen;
+      }
+      try { localStorage.setItem('arena-theme', chosen); } catch { /* private mode */ }
+      applyTheme(chosen);
+    });
+  });
 
   const densitySelect = $('#s-density');
   if (densitySelect) {
@@ -2623,6 +2873,12 @@ async function viewSettings(tab = 'general') {
 
   if ($('#s-save')) {
     $('#s-save').addEventListener('click', async () => {
+      const saveBtn = $('#s-save');
+      const originalHtml = saveBtn ? saveBtn.innerHTML : '';
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/></svg> <span>Saving…</span>`;
+      }
       const patch = {};
       app().querySelectorAll('[data-set]').forEach((el) => {
         let value;
@@ -2645,8 +2901,21 @@ async function viewSettings(tab = 'general') {
         const updated = await api('/api/settings', { method: 'PUT', body: patch });
         state.settings = updated;
         if (updated.density) applyDensity(updated.density);
+        if (saveBtn) {
+          saveBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> <span>Saved!</span>`;
+          setTimeout(() => {
+            if (saveBtn) {
+              saveBtn.disabled = false;
+              saveBtn.innerHTML = originalHtml;
+            }
+          }, 1500);
+        }
         toast('Settings saved successfully.');
       } catch (err) {
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = originalHtml;
+        }
         toast(`Error saving settings: ${err.message}`, 'error');
       }
     });

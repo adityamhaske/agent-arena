@@ -10,7 +10,7 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [2.0.0rc2] - unreleased
+## [2.0.0rc2] - 2026-09-04
 
 ### Added
 
@@ -83,6 +83,14 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   wiring rather than architecture, and vanilla keeps invariant 2 intact:
   `pip install agent-arena` still ships a working UI with no extra
   dependency, no npm, and no build step.
+- **Browser UI/UX design overhaul**:
+  - Multi-font hierarchy pairing `Plus Jakarta Sans` for headings, `Inter` for interfaces, and `JetBrains Mono` for benchmark scores and code.
+  - Sidenav overhaul with theme switch shortcut in footer (`Dark | Settings`), clean divider, and active navigation indicators.
+  - Interactive visual theme selector cards (`System`, `Light`, `Dark`) with OS window wireframes, live preview switching, and synchronized settings persistence.
+  - Card-based settings sections (`Theme & Appearance`, `Workspace & Navigation`, `CLI Engine & Automation`) with responsive 2-column/3-column grids, animated iOS/Linear-style toggle switches, input path badges, and unit suffixes (`trials`, `workers`, `seconds`, `retries`, `temp`, `tokens`, `$`).
+  - Models catalog table split into Available & Ready vs Needs API Key with green/yellow status indicators and instant text filtering.
+  - Runs stream interface with status filters, clean text status badges, and cleaner timestamps.
+  - Overview dashboard refined with horizontal breathing room and multi-column organization.
 - **Provider routes over HTTP** (`GET`/`POST /api/providers`, `DELETE`,
   `/test`, `/discover`) — provider management had been CLI-only, and a
   Providers page without a working "Test connection" button is not worth
@@ -104,6 +112,10 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   making "no such provider" indistinguishable from "malformed provider" while
   the project and run routes already answered 404. It now maps to 404, and
   `ConflictError` to 409.
+- Fixed nested defaults settings binding in `web/static/app.js` (`defaults.*`) to
+  prevent unknown parameter rejection errors on save.
+- Fixed horizontal dropdown width in settings forms with constrained max-width
+  and balanced grid layouts.
 
 ## [2.0.0rc1] - 2026-09-03
 

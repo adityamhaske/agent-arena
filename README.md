@@ -2,7 +2,7 @@
 
 [![CI](https://img.shields.io/github/actions/workflow/status/adityamhaske/agent-arena/ci.yml?branch=main&label=CI)](https://github.com/adityamhaske/agent-arena/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/agent-arena)](https://pypi.org/project/agent-arena/)
-[![TestPyPI](https://img.shields.io/badge/TestPyPI-2.0.0rc1-informational)](https://test.pypi.org/project/agent-arena/2.0.0rc1/)
+[![TestPyPI](https://img.shields.io/badge/TestPyPI-2.0.0rc2-informational)](https://test.pypi.org/project/agent-arena/2.0.0rc2/)
 ![Python 3.10 – 3.13](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)
 [![License MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -32,9 +32,9 @@ pip install -e .          # engine only; add [anthropic], [openai], [gemini], [a
 arena evaluate --project projects/support_triage
 ```
 
-A `2.0.0rc1` release candidate is also on TestPyPI, if you would rather not
+A `2.0.0rc2` release candidate is also on TestPyPI, if you would rather not
 clone: `pip install --index-url https://test.pypi.org/simple/
---extra-index-url https://pypi.org/simple/ agent-arena==2.0.0rc1` — see
+--extra-index-url https://pypi.org/simple/ agent-arena==2.0.0rc2` — see
 [installation](docs/operations/installation.md) for the `uvx` one-liner and a
 Docker image.
 

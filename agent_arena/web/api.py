@@ -785,7 +785,7 @@ class ArenaAPI:
         registry = ScorerRegistry()
         return {
             "version": __version__,
-            "release_channel": "Release Candidate (v2.0.0rc1)",
+            "release_channel": f"Release Candidate (v{__version__})",
             "license": "MIT",
             "author": "Aditya Mhaske",
             "python": sys.version.split()[0],
