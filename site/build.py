@@ -264,7 +264,7 @@ BY_SOURCE = {page.source: page for page in PAGES if page.source}
 
 #: Repo files that are worth linking but are not pages — sent to GitHub instead
 #: of 404ing. Any path not listed and not a page gets the same treatment.
-NAV_GROUPS = ["Universal Arena", "Multi-agent study", "Project", "Decisions"]
+NAV_GROUPS = ["Universal Arena", "Multi-agent study", "Documentation", "Project", "Decisions"]
 
 
 # ---------------------------------------------------------------------------
@@ -468,6 +468,8 @@ def breadcrumb_trail(page: Page) -> list[tuple[str, str]]:
         trail.append(("Decisions", f"{BASE}/decisions/"))
     elif page.nav == "Multi-agent study" and page.url != "/study/":
         trail.append(("Multi-agent study", f"{BASE}/study/"))
+    elif page.nav == "Documentation" and page.url != "/docs/":
+        trail.append(("Documentation", f"{BASE}/docs/"))
     trail.append((page.title, page.href))
     return trail
 

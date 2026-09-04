@@ -90,7 +90,7 @@ pip install -e ".[dev]"
 ```
 
 You do not need any of them to start: `mock:` and local models work with the base
-install, and both example projects run offline.
+install, and examples 1, 2 and 4 run fully offline.
 
 If you call a model whose SDK is missing, the error names the exact fix:
 
@@ -114,7 +114,7 @@ a leaderboard, the install is good.
 
 ```bash
 pip install -e ".[dev]"
-python3 -m pytest -q        # 709 passed in ~44s
+python3 -m pytest -q        # 715 passed in ~44s
 ```
 
 Use a **fresh** virtualenv if you want to verify the stdlib-only invariant. An

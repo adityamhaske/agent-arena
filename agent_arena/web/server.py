@@ -114,6 +114,8 @@ def build_routes(api: ArenaAPI) -> list[Route]:
         Route("POST", r"/api/local/start", lambda **_: api.start_local_runtime()),
         Route("GET", r"/api/settings", lambda **_: api.settings()),
         Route("PUT", r"/api/settings", lambda body, **_: api.update_settings(body)),
+        Route("POST", r"/api/settings/reset", lambda **_: api.reset_settings()),
+        Route("GET", r"/api/about", lambda **_: api.about()),
     ]
 
 

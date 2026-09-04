@@ -1,4 +1,4 @@
-# Example project 2 of 2 — structured extraction from documents.
+# Example project 2 — structured extraction from documents.
 #
 # Deliberately shaped nothing like `support_triage`, to show that the same
 # engine covers both with no code changes: different eval types, a

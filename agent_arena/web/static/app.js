@@ -70,6 +70,60 @@ function timeAgo(iso) {
   return `${Math.round(seconds / 86400)} days ago`;
 }
 
+function formatTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso.endsWith('Z') || iso.includes('+') ? iso : iso + 'Z');
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatDate(iso) {
+  if (!iso) return 'Undated';
+  const d = new Date(iso.endsWith('Z') || iso.includes('+') ? iso : iso + 'Z');
+  if (Number.isNaN(d.getTime())) return 'Undated';
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const isYesterday = d.toDateString() === yesterday.toDateString();
+  if (isToday) return 'Today · ' + d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+  if (isYesterday) return 'Yesterday · ' + d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+  return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function groupRunsByDate(runs) {
+  const groups = new Map();
+  for (const r of runs) {
+    const key = r.started_at ? formatDate(r.started_at) : 'Undated';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  }
+  return Array.from(groups.entries()).map(([date, items]) => ({ date, runs: items }));
+}
+
+function bindDropdowns() {
+  // Global click-outside listener is registered once on document
+}
+
+// Global click-outside listener for interactive dropdowns
+document.addEventListener('click', (e) => {
+  const toggle = e.target.closest('[data-dropdown-toggle]');
+  if (toggle) {
+    e.preventDefault();
+    e.stopPropagation();
+    const dropdown = toggle.closest('.dropdown');
+    const wasOpen = dropdown?.classList.contains('open');
+    document.querySelectorAll('.dropdown.open').forEach((d) => d.classList.remove('open'));
+    if (!wasOpen && dropdown) {
+      dropdown.classList.add('open');
+    }
+    return;
+  }
+  if (!e.target.closest('.dropdown')) {
+    document.querySelectorAll('.dropdown.open').forEach((d) => d.classList.remove('open'));
+  }
+});
+
 /** Mirrors language.explain_weights for live slider feedback only. The
  *  sentence shown on a results page always comes from the server. */
 function weightSentence(weights) {
@@ -179,7 +233,9 @@ function renderNav(path) {
 }
 
 function crumbs(...parts) {
-  $('#crumbs').innerHTML = parts.map((part, i) => {
+  const el = $('#crumbs');
+  if (!el) return;
+  el.innerHTML = parts.map((part, i) => {
     const last = i === parts.length - 1;
     const node = part.href && !last
       ? `<a href="${part.href}" data-link>${esc(part.label)}</a>`
@@ -190,7 +246,13 @@ function crumbs(...parts) {
 
 async function router() {
   if (state.poll) { clearInterval(state.poll); state.poll = null; }
-  const path = location.hash.replace(/^#/, '') || '/';
+  // The hash carries a query string on links like `#/p/x/results?run=<id>`.
+  // Route patterns are anchored, so it has to come off the path before
+  // matching or every such link falls through to the `#/` fallback below.
+  const raw = location.hash.replace(/^#/, '') || '/';
+  const cut = raw.indexOf('?');
+  const path = cut === -1 ? raw : raw.slice(0, cut) || '/';
+  const params = new URLSearchParams(cut === -1 ? '' : raw.slice(cut + 1));
   renderNav(path);
   $('#sidenav').classList.remove('open');
   $('#nav-toggle').setAttribute('aria-expanded', 'false');
@@ -199,7 +261,7 @@ async function router() {
     if (match) {
       app().innerHTML = '<div class="loading">Loading…</div>';
       try {
-        await view(...match.slice(1));
+        await view(...match.slice(1), params);
       } catch (error) {
         renderError(error);
       }
@@ -303,6 +365,54 @@ function renderWizard() {
         ? '<button class="btn btn-primary" data-act="next">Continue</button>'
         : '<button class="btn btn-primary btn-lg" data-act="create">Create evaluation</button>'}
     </div>`;
+
+  if (d.step === 2) {
+    const searchInput = document.getElementById('wizard-model-search');
+    const chipContainer = document.getElementById('wizard-filter-chips');
+    const choicesContainer = document.getElementById('wizard-body');
+
+    function applyWizardFilter() {
+      if (!choicesContainer) return;
+      const query = (searchInput?.value || '').trim().toLowerCase();
+      const activeChip = chipContainer?.querySelector('.filter-chip.active');
+      const activeFilter = activeChip?.getAttribute('data-wizard-filter') || 'all';
+
+      const buttons = choicesContainer.querySelectorAll('button.choice[data-filter-name]');
+      buttons.forEach((btn) => {
+        const name = (btn.getAttribute('data-filter-name') || '').toLowerCase();
+        const isDemo = btn.getAttribute('data-is-demo') === 'true';
+        const isAvailable = btn.getAttribute('data-available') === 'true';
+        const provider = (btn.getAttribute('data-provider') || '').toLowerCase();
+
+        let matchesFilter = true;
+        if (activeFilter === 'ready') matchesFilter = isAvailable || isDemo;
+        else if (activeFilter === 'demo') matchesFilter = isDemo;
+        else if (activeFilter !== 'all') matchesFilter = provider.includes(activeFilter);
+
+        const matchesSearch = !query || name.includes(query) || provider.includes(query);
+        btn.style.display = (matchesFilter && matchesSearch) ? '' : 'none';
+      });
+
+      choicesContainer.querySelectorAll('.wizard-model-section').forEach((sec) => {
+        const visibleBtns = sec.querySelectorAll('button.choice:not([style*="display: none"])');
+        sec.style.display = visibleBtns.length ? '' : 'none';
+      });
+    }
+
+    if (chipContainer) {
+      chipContainer.addEventListener('click', (e) => {
+        const btn = e.target.closest('.filter-chip');
+        if (!btn) return;
+        chipContainer.querySelectorAll('.filter-chip').forEach((c) => c.classList.remove('active'));
+        btn.classList.add('active');
+        applyWizardFilter();
+      });
+    }
+
+    if (searchInput) {
+      searchInput.addEventListener('input', applyWizardFilter);
+    }
+  }
 }
 
 function wizardStep() {
@@ -351,27 +461,101 @@ function wizardStep() {
   }
 
   if (d.step === 2) {
-    const demo = state.catalog.demo_models.map((m) => `
-      <button class="choice" data-model="${esc(m.key)}" aria-pressed="${d.models.includes(m.key)}">
-        <strong>${esc(m.label)}</strong>
-        <span>${esc(m.blurb)}</span>
-      </button>`).join('');
-    const real = state.catalog.real_models.map((m) => `
-      <button class="choice" data-model="${esc(m.model)}" aria-pressed="${d.models.includes(m.model)}"
-              ${m.available ? '' : 'disabled title="Needs an API key that is not set on this machine"'}>
-        <strong>${esc(m.display)}</strong>
-        <span>${esc(m.provider)} · $${esc(m.input_usd_per_mtok ?? '?')} in / $${esc(m.output_usd_per_mtok ?? '?')} out per million words-ish</span>
-        <em>${m.available ? 'Ready to use' : `Needs ${esc(m.api_key_env)} — not set`}</em>
-      </button>`).join('');
+    const rawDemo = state.catalog.demo_models || [];
+    const rawReal = state.catalog.real_models || [];
+
+    // Sort demo models best accuracy first
+    const demo = [...rawDemo].sort((a, b) => (b.params?.accuracy ?? 0) - (a.params?.accuracy ?? 0));
+
+    // Sort real models: ready first, best capability tier first
+    const real = [...rawReal].sort((a, b) => {
+      const aAvail = a.available ? 1 : 0;
+      const bAvail = b.available ? 1 : 0;
+      if (bAvail !== aAvail) return bAvail - aAvail;
+      const aTier = getModelTierInfo(a).tier;
+      const bTier = getModelTierInfo(b).tier;
+      if (bTier !== aTier) return bTier - aTier;
+      const aOut = Number(a.output_usd_per_mtok) || 0;
+      const bOut = Number(b.output_usd_per_mtok) || 0;
+      if (bOut !== aOut) return bOut - aOut;
+      return (a.model || '').localeCompare(b.model || '');
+    });
+
+    const readyReal = real.filter((m) => m.available);
+    const unavailableReal = real.filter((m) => !m.available);
+
+    const renderCard = (m, isDemo = false) => {
+      const key = isDemo ? m.key : m.model;
+      const isSelected = d.models.includes(key);
+      if (isDemo) {
+        return `
+          <button class="choice" data-model="${esc(key)}" data-filter-name="${esc(m.key)} ${esc(m.label || '')} ${esc(m.model)}" data-is-demo="true" data-available="true" data-provider="mock" aria-pressed="${isSelected}">
+            <div class="choice-header">
+              <strong><span class="dot ok" title="Ready to use"></span> ${esc(m.label)}</strong>
+              <span class="pill pill-sm ok">${m.params?.accuracy != null ? m.params.accuracy + '%' : 'Free'}</span>
+            </div>
+            <span>${esc(m.blurb || '')} · ${m.params?.latency_ms ? m.params.latency_ms + 'ms' : 'Instant'}</span>
+            <em class="good"><span class="dot ok"></span> Ready to evaluate (Free)</em>
+          </button>`;
+      }
+      const tier = getModelTierInfo(m);
+      if (m.available) {
+        return `
+          <button class="choice" data-model="${esc(key)}" data-filter-name="${esc(m.model)} ${esc(m.display || '')} ${esc(m.provider || '')}" data-is-demo="false" data-available="true" data-provider="${esc(m.provider || '')}" aria-pressed="${isSelected}">
+            <div class="choice-header">
+              <strong><span class="dot ok" title="Ready to use"></span> ${esc(m.display || m.model)}</strong>
+              <span class="model-tier-pill ${tier.cls}">${tier.label}</span>
+            </div>
+            <span>${esc(m.provider)} · $${esc(m.input_usd_per_mtok ?? '?')} in / $${esc(m.output_usd_per_mtok ?? '?')} out per Mtok</span>
+            <em class="good"><span class="dot ok"></span> Ready to use</em>
+          </button>`;
+      } else {
+        return `
+          <button class="choice is-disabled" data-model="${esc(key)}" data-filter-name="${esc(m.model)} ${esc(m.display || '')} ${esc(m.provider || '')}" data-is-demo="false" data-available="false" data-provider="${esc(m.provider || '')}" aria-pressed="${isSelected}"
+                  disabled title="Set ${esc(m.api_key_env || 'API key')} in your environment to unlock">
+            <div class="choice-header">
+              <strong><span class="dot warn" title="Requires API key"></span> ${esc(m.display || m.model)}</strong>
+              <span class="model-tier-pill ${tier.cls}">${tier.label}</span>
+            </div>
+            <span>${esc(m.provider)} · $${esc(m.input_usd_per_mtok ?? '?')} in / $${esc(m.output_usd_per_mtok ?? '?')} out per Mtok</span>
+            <em class="warn"><span class="dot warn"></span> Needs ${esc(m.api_key_env || 'API key')} — not set</em>
+          </button>`;
+      }
+    };
+
     return `
-      <h3>Free simulated models</h3>
-      <p class="hint">Stand-ins with fixed accuracy, speed and price. They cost nothing and let you
-      see exactly how this works before spending anything. Recommended for your first run.</p>
-      <div class="choices">${demo}</div>
-      <h3 style="margin-top:1.5rem">Real models</h3>
-      <p class="hint">These make real API calls and cost real money. Greyed-out ones need an API key
-      set on this computer.</p>
-      <div class="choices">${real}</div>`;
+      <div class="model-toolbar" style="margin-bottom:1.5rem;">
+        <div class="model-filter-chips" id="wizard-filter-chips">
+          <button type="button" class="filter-chip active" data-wizard-filter="all">All (${demo.length + real.length})</button>
+          <button type="button" class="filter-chip" data-wizard-filter="ready"><span class="dot ok" style="width:7px;height:7px;margin-right:4px;"></span>Ready (${demo.length + readyReal.length})</button>
+          <button type="button" class="filter-chip" data-wizard-filter="demo">Simulated (${demo.length})</button>
+          <button type="button" class="filter-chip" data-wizard-filter="anthropic">Anthropic</button>
+          <button type="button" class="filter-chip" data-wizard-filter="openai">OpenAI</button>
+          <button type="button" class="filter-chip" data-wizard-filter="gemini">Gemini</button>
+          <button type="button" class="filter-chip" data-wizard-filter="mistral">Mistral</button>
+        </div>
+        <div class="model-search-box">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:.6"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="search" id="wizard-model-search" placeholder="Filter models by name..." autocomplete="off">
+        </div>
+      </div>
+
+      <div class="wizard-model-section" data-section="ready">
+        <h3><span class="dot ok"></span> Available & Ready Models (${demo.length + readyReal.length})</h3>
+        <p class="hint">Active models ready to evaluate right now — zero configuration required.</p>
+        <div class="choices">
+          ${demo.map((m) => renderCard(m, true)).join('')}
+          ${readyReal.map((m) => renderCard(m, false)).join('')}
+        </div>
+      </div>
+
+      <div class="wizard-model-section" data-section="unavailable" style="margin-top:2rem;">
+        <h3><span class="dot warn"></span> Requires API Key (${unavailableReal.length})</h3>
+        <p class="hint">These models make real API calls and need their corresponding environment variable key configured on this machine.</p>
+        <div class="choices">
+          ${unavailableReal.map((m) => renderCard(m, false)).join('')}
+        </div>
+      </div>`;
   }
 
   if (d.step === 3) {
@@ -505,7 +689,56 @@ async function wizardCreate() {
 
 /* -------------------------------------------------------- view: project */
 
+function renderProjectHeader(p, activeTab) {
+  return `
+    <div class="project-header">
+      <div class="project-header-top">
+        <div>
+          <div class="eyebrow">Evaluation Project</div>
+          <h1 class="project-title">${esc(p.project || p.name)}</h1>
+          <p class="lede mb0">${esc(p.description || 'Custom model benchmarking & evaluation suite.')}</p>
+        </div>
+        <div class="page-head-actions">
+          <a class="btn btn-primary" href="#/p/${esc(p.name)}/run" data-link>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            <span>Run sweep</span>
+          </a>
+          <div class="dropdown">
+            <button class="btn dropdown-toggle" aria-label="Evaluation actions" data-dropdown-toggle>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+              <span>Manage</span>
+              <span class="caret">▾</span>
+            </button>
+            <div class="dropdown-menu">
+              <button class="dropdown-item" data-act="dup-proj" data-name="${esc(p.name)}">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                Duplicate evaluation
+              </button>
+              <button class="dropdown-item" data-act="arch-proj" data-name="${esc(p.name)}" data-on="${p.archived ? '0' : '1'}">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4"/></svg>
+                ${p.archived ? 'Restore evaluation' : 'Archive evaluation'}
+              </button>
+              <div class="dropdown-divider"></div>
+              <button class="dropdown-item danger" data-act="del-proj" data-name="${esc(p.name)}">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                Delete evaluation
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <nav class="project-tabs" aria-label="Project Sub-navigation">
+        <a href="#/p/${esc(p.name)}" data-link class="project-tab ${activeTab === 'overview' ? 'active' : ''}">Overview</a>
+        <a href="#/p/${esc(p.name)}/results" data-link class="project-tab ${activeTab === 'results' ? 'active' : ''}">Results &amp; Leaderboard</a>
+        <a href="#/p/${esc(p.name)}/priorities" data-link class="project-tab ${activeTab === 'priorities' ? 'active' : ''}">Priorities &amp; Weights</a>
+        <a href="#/p/${esc(p.name)}/examples" data-link class="project-tab ${activeTab === 'examples' ? 'active' : ''}">Test Examples (${p.tests?.length || 0})</a>
+        <a href="#/p/${esc(p.name)}/history" data-link class="project-tab ${activeTab === 'history' ? 'active' : ''}">History &amp; Sweeps</a>
+      </nav>
+    </div>`;
+}
+
 async function viewProject(name) {
+  crumbs({ label: 'Projects', href: '#/projects' }, { label: name });
   const p = await api(`/api/projects/${name}`);
   state.project = p;
   const pre = p.preflight;
@@ -517,16 +750,12 @@ async function viewProject(name) {
         <span class="model-id">${esc(m.model)}</span>
       </span>
       ${m.simulated ? '<span class="pill mute">simulated · free</span>'
-        : m.ready ? '<span class="pill good">ready</span>'
+        : m.ready ? '<span class="pill ok">ready</span>'
         : `<span class="pill warn">needs a key</span>`}
     </li>`).join('');
 
   app().innerHTML = `
-    <div class="page-head">
-      <div class="eyebrow">Evaluation</div>
-      <h1>${esc(p.project)}</h1>
-      <p class="lede">${esc(p.description || 'No description.')}</p>
-    </div>
+    ${renderProjectHeader(p, 'overview')}
 
     ${pre.blocked ? `<div class="callout bad"><p class="mb0">${esc(pre.blocked)}</p></div>` : ''}
     ${Object.keys(pre.skipped).length ? `
@@ -590,11 +819,16 @@ async function viewProject(name) {
         </div>
       </div>
     </div>`;
+
+  app().querySelectorAll('[data-act="dup-proj"]').forEach((b) => b.addEventListener('click', () => duplicateProject(b.dataset.name)));
+  app().querySelectorAll('[data-act="arch-proj"]').forEach((b) => b.addEventListener('click', () => archiveProject(b.dataset.name, b.dataset.on === '1')));
+  app().querySelectorAll('[data-act="del-proj"]').forEach((b) => b.addEventListener('click', () => deleteProject(b.dataset.name)));
 }
 
 /* ------------------------------------------------------------ view: run */
 
 async function viewRun(name) {
+  crumbs({ label: 'Projects', href: '#/projects' }, { label: name, href: `#/p/${name}` }, { label: 'Live Sweep' });
   const job = await api(`/api/projects/${name}/run`, { method: 'POST', body: {} });
   state.job = job;
   renderRun(name, job);
@@ -622,13 +856,15 @@ function renderRun(name, job) {
   const feed = (job.recent || []).slice(-25).reverse().map((r) => {
     const cls = r.status !== 'ok' ? 'er' : r.passed ? 'ok' : 'no';
     const body = r.status !== 'ok' ? (r.error || 'error') : r.output || '(empty)';
-    return `<div class="${cls}">${esc(r.model)} · ${esc(r.test)} — ${esc(body.slice(0, 110))}</div>`;
+    return `<div class="${cls}">[${r.passed ? 'PASS' : 'TEST'}] ${esc(r.model)} · ${esc(r.test)} — ${esc(body.slice(0, 110))}</div>`;
   }).join('');
 
   app().innerHTML = `
     <div class="page-head">
-      <div class="eyebrow">Running</div>
-      <h1>${esc(name)}</h1>
+      <div>
+        <div class="eyebrow">Running Evaluation Sweep</div>
+        <h1>${esc(name)}</h1>
+      </div>
     </div>
     ${job.status === 'error' ? `
       <div class="card">
@@ -637,35 +873,51 @@ function renderRun(name, job) {
         <p class="btn-row"><a class="btn" href="#/p/${esc(name)}" data-link>Back to the evaluation</a></p>
       </div>` : `
       <div class="card">
-        <p><strong>${job.completed.toLocaleString()}</strong> of
-           <strong>${(job.planned || 0).toLocaleString()}</strong> calls done
-           ${job.eta_s != null ? `· about ${Math.ceil(job.eta_s)}s left` : ''}</p>
+        <div class="card-header">
+          <h2 class="card-title">${job.completed.toLocaleString()} of ${(job.planned || 0).toLocaleString()} calls done</h2>
+          ${job.eta_s != null ? `<span class="badge-tag live-tag"><span class="dot live"></span>~${Math.ceil(job.eta_s)}s remaining</span>` : ''}
+        </div>
         <div class="progress"><i style="width:${percent}%"></i></div>
-        <p class="small muted">Every answer is graded as it arrives. You can leave this page —
-        the run keeps going.</p>
+        <p class="small muted">Every answer is graded as it arrives. You can leave this page — the sweep continues in background.</p>
         ${feed ? `<div class="feed">${feed}</div>` : ''}
       </div>`}`;
 }
 
 /* -------------------------------------------------------- view: results */
 
-async function viewResults(name) {
-  const result = state.result?.project && state.result.run_id
-    ? state.result
-    : await api(`/api/projects/${name}/result`);
+async function viewResults(name, params) {
+  crumbs({ label: 'Projects', href: '#/projects' }, { label: name, href: `#/p/${name}` }, { label: 'Results' });
+  const p = state.project?.name === name ? state.project : await api(`/api/projects/${name}`);
+  state.project = p;
+  // `?run=` asks for one specific sweep; without it the newest one is shown.
+  // The cached result is only reusable when it is already that same run.
+  const wanted = params ? params.get('run') : null;
+  const cached = state.result;
+  const usable = cached && cached.project === name && cached.run_id
+    && (!wanted || cached.run_id === wanted);
+  const result = usable
+    ? cached
+    : await api(`/api/projects/${name}/result${wanted ? `?run_id=${encodeURIComponent(wanted)}` : ''}`);
   state.result = result;
-  renderResults(name, result);
+  renderResults(name, result, p);
 }
 
-function renderResults(name, result) {
+function renderResults(name, result, p) {
   const v = result.verdict;
   const ranked = result.rows.filter((r) => r.status === 'ranked');
   const out = result.rows.filter((r) => r.status !== 'ranked');
   const maxAccuracy = Math.max(...result.rows.map((r) => r.accuracy || 0), 0.0001);
 
+  const rankBadge = (i) => {
+    if (i === 0) return '<span class="rank-badge gold">1</span>';
+    if (i === 1) return '<span class="rank-badge silver">2</span>';
+    if (i === 2) return '<span class="rank-badge bronze">3</span>';
+    return `<span class="rank-badge">${i + 1}</span>`;
+  };
+
   const row = (r, i) => `
     <tr class="${r.status === 'ranked' && i === 0 ? 'is-winner' : ''} ${r.status !== 'ranked' ? 'is-out' : ''}">
-      <td class="num">${r.status === 'ranked' ? (i + 1) : '—'}</td>
+      <td class="num">${r.status === 'ranked' ? rankBadge(i) : '—'}</td>
       <td>
         <div class="model-name">${esc(r.display)}</div>
         <div class="model-id">${esc(r.model)}</div>
@@ -682,10 +934,11 @@ function renderResults(name, result) {
     </tr>`;
 
   app().innerHTML = `
-    <div class="page-head">
-      <div class="eyebrow">${result.hypothetical ? 'What-if — nothing was re-run' : 'Result'}</div>
-      <h1>${esc(name)}</h1>
-    </div>
+    ${p ? renderProjectHeader(p, 'results') : `
+      <div class="page-head">
+        <div class="eyebrow">${result.hypothetical ? 'What-if — nothing was re-run' : 'Result'}</div>
+        <h1>${esc(name)}</h1>
+      </div>`}
 
     <div class="card verdict ${v.confidence === 'low' ? 'low' : v.confidence === 'none' ? 'none' : ''}">
       <h1>${esc(v.headline)}</h1>
@@ -706,7 +959,10 @@ function renderResults(name, result) {
       </div>` : ''}
 
     <div class="card">
-      <h2>Every model, side by side</h2>
+      <div class="card-header">
+        <h2 class="card-title">Every model, side by side</h2>
+        <span class="badge-tag">${result.rows.length} models evaluated</span>
+      </div>
       <div class="table-wrap">
         <table>
           <thead><tr>
@@ -717,66 +973,76 @@ function renderResults(name, result) {
         </table>
       </div>
       <p class="small muted" style="margin-top:.7rem">
-        “Overall” blends the three columns using your priorities. It is only comparable
-        within this table.
+        “Overall” blends the three columns using your priorities. It is only comparable within this table.
       </p>
     </div>
 
-    <div class="card">
-      <h2>What if your priorities changed?</h2>
-      <p class="hint">Move a slider and the ranking is recalculated from the answers already
-      collected. Nothing is re-run and nothing is charged.</p>
-      ${['accuracy', 'cost', 'latency'].map((metric) => {
-        const meta = state.catalog?.metric_language?.[metric] || {};
-        const weight = result.weights[metric] ?? 0;
-        return `
-          <div class="weight">
-            <div class="weight-label">${esc(meta.slider || metric)}</div>
-            <div class="weight-value" data-out="${metric}">${Math.round(weight * 100)}</div>
-            <input type="range" min="0" max="100" step="5" value="${Math.round(weight * 100)}" data-whatif="${metric}">
-          </div>`;
-      }).join('')}
-      <div class="btn-row">
-        <button class="btn" data-act="whatif" data-name="${esc(name)}">Recalculate</button>
-        ${result.hypothetical ? `<a class="btn" href="#/p/${esc(name)}/results" data-link data-reset="1">Back to the real result</a>` : ''}
+    <div class="split" style="margin-top: 1.35rem;">
+      <div class="card" style="margin-top: 0;">
+        <h2>What if your priorities changed?</h2>
+        <p class="hint">Move a slider and the ranking is recalculated from the answers already
+        collected. Nothing is re-run and nothing is charged.</p>
+        ${['accuracy', 'cost', 'latency'].map((metric) => {
+          const meta = state.catalog?.metric_language?.[metric] || {};
+          const weight = result.weights[metric] ?? 0;
+          return `
+            <div class="weight">
+              <div class="weight-label">${esc(meta.slider || metric)}</div>
+              <div class="weight-value" data-out="${metric}">${Math.round(weight * 100)}</div>
+              <input type="range" min="0" max="100" step="5" value="${Math.round(weight * 100)}" data-whatif="${metric}">
+            </div>`;
+        }).join('')}
+        <div class="btn-row">
+          <button class="btn btn-primary" data-act="whatif" data-name="${esc(name)}">Recalculate</button>
+          ${result.hypothetical ? `<a class="btn" href="#/p/${esc(name)}/results" data-link data-reset="1">Back to real result</a>` : ''}
+        </div>
       </div>
-    </div>
 
-    ${result.notes?.length ? `
-      <div class="card">
-        <h2>Worth knowing</h2>
-        <ul class="muted">${result.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>
-      </div>` : ''}
+      <div>
+        ${result.notes?.length ? `
+          <div class="card" style="margin-top: 0;">
+            <h2>Worth knowing</h2>
+            <ul class="muted">${result.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>
+          </div>` : ''}
 
-    <div class="card">
-      <div class="stat-row">
-        ${result.totals.calls ? `<div class="stat"><div class="k">Calls made</div><div class="v">${result.totals.calls.toLocaleString()}</div></div>` : ''}
-        ${result.totals.cost_usd != null ? `<div class="stat"><div class="k">Spent</div><div class="v">$${result.totals.cost_usd.toFixed(4)}</div></div>` : ''}
-        ${result.totals.duration_s ? `<div class="stat"><div class="k">Took</div><div class="v">${result.totals.duration_s}s</div></div>` : ''}
-        ${result.totals.errors != null ? `<div class="stat"><div class="k">Errors</div><div class="v">${result.totals.errors}</div></div>` : ''}
-      </div>
-      <div class="btn-row" style="margin-top:1rem">
-        <a class="btn" href="#/p/${esc(name)}" data-link>Back to the evaluation</a>
-        <a class="btn" href="#/p/${esc(name)}/history" data-link>Compare with past runs</a>
+        <div class="card" style="${result.notes?.length ? 'margin-top: 1.25rem;' : 'margin-top: 0;'}">
+          <h2>Run metrics &amp; summary</h2>
+          <div class="stat-row" style="grid-template-columns: repeat(2, 1fr); margin-bottom: 0;">
+            ${result.totals.calls ? `<div class="stat"><div class="k">Calls made</div><div class="v">${result.totals.calls.toLocaleString()}</div></div>` : ''}
+            ${result.totals.cost_usd != null ? `<div class="stat"><div class="k">Spent</div><div class="v">$${result.totals.cost_usd.toFixed(4)}</div></div>` : ''}
+            ${result.totals.duration_s ? `<div class="stat"><div class="k">Took</div><div class="v">${result.totals.duration_s}s</div></div>` : ''}
+            ${result.totals.errors != null ? `<div class="stat"><div class="k">Errors</div><div class="v">${result.totals.errors}</div></div>` : ''}
+          </div>
+          <div class="btn-row" style="margin-top:1.25rem">
+            <a class="btn" href="#/p/${esc(name)}" data-link>Back to evaluation</a>
+            <a class="btn" href="#/p/${esc(name)}/history" data-link>Compare with past runs</a>
+          </div>
+        </div>
       </div>
     </div>`;
+
+  if (p) {
+    app().querySelectorAll('[data-act="dup-proj"]').forEach((b) => b.addEventListener('click', () => duplicateProject(b.dataset.name)));
+    app().querySelectorAll('[data-act="arch-proj"]').forEach((b) => b.addEventListener('click', () => archiveProject(b.dataset.name, b.dataset.on === '1')));
+    app().querySelectorAll('[data-act="del-proj"]').forEach((b) => b.addEventListener('click', () => deleteProject(b.dataset.name)));
+  }
 }
 
 /* ----------------------------------------------------- view: priorities */
 
 async function viewPriorities(name) {
+  crumbs({ label: 'Projects', href: '#/projects' }, { label: name, href: `#/p/${name}` }, { label: 'Priorities' });
   const p = state.project?.name === name ? state.project : await api(`/api/projects/${name}`);
   state.project = p;
   const weights = p.weights;
 
   app().innerHTML = `
-    <div class="page-head">
-      <div class="eyebrow">${esc(p.project)}</div>
-      <h1>What matters to you</h1>
+    ${renderProjectHeader(p, 'priorities')}
+
+    <div class="card">
+      <h2>Weights &amp; Priorities</h2>
       <p class="lede">This is the only thing that decides who wins. Two teams running the same
       models on the same examples can correctly reach opposite conclusions here.</p>
-    </div>
-    <div class="card">
       ${['accuracy', 'cost', 'latency'].map((metric) => {
         const meta = state.catalog?.metric_language?.[metric] || {};
         return `
@@ -790,8 +1056,7 @@ async function viewPriorities(name) {
     </div>
     <div class="card">
       <h2>Hard limits</h2>
-      <p class="hint">Break one of these and a model is ruled out, not just ranked lower.
-      Leave blank for no limit.</p>
+      <p class="hint">Break one of these and a model is ruled out, not just ranked lower. Leave blank for no limit.</p>
       <div class="field-row">
         <div class="field">
           <label for="c-acc">Minimum accuracy (out of 100)</label>
@@ -816,28 +1081,29 @@ async function viewPriorities(name) {
       </div>
     </div>
     <div class="btn-row">
-      <button class="btn btn-primary" data-act="save-priorities" data-name="${esc(name)}">Save</button>
+      <button class="btn btn-primary" data-act="save-priorities" data-name="${esc(name)}">Save changes</button>
       <a class="btn" href="#/p/${esc(name)}" data-link>Cancel</a>
     </div>`;
 
   state.draft = { weights: { ...weights } };
+
+  app().querySelectorAll('[data-act="dup-proj"]').forEach((b) => b.addEventListener('click', () => duplicateProject(b.dataset.name)));
+  app().querySelectorAll('[data-act="arch-proj"]').forEach((b) => b.addEventListener('click', () => archiveProject(b.dataset.name, b.dataset.on === '1')));
+  app().querySelectorAll('[data-act="del-proj"]').forEach((b) => b.addEventListener('click', () => deleteProject(b.dataset.name)));
 }
 
 /* ------------------------------------------------------- view: examples */
 
 async function viewExamples(name) {
+  crumbs({ label: 'Projects', href: '#/projects' }, { label: name, href: `#/p/${name}` }, { label: 'Test Examples' });
   const p = state.project?.name === name ? state.project : await api(`/api/projects/${name}`);
   state.project = p;
   state.draft = { tests: p.tests.map((t) => ({ ...t, reference: t.reference ?? '' })) };
 
   const answerLabel = p.preset?.answer_label || 'Expected answer';
   app().innerHTML = `
-    <div class="page-head">
-      <div class="eyebrow">${esc(p.project)}</div>
-      <h1>Your examples</h1>
-      <p class="lede">These are what every model gets marked against. Add the cases you actually
-      worry about — the ambiguous ones tell you far more than the easy ones.</p>
-    </div>
+    ${renderProjectHeader(p, 'examples')}
+
     ${p.editable ? '' : `
       <div class="callout warn"><p class="mb0">This project keeps its examples in more than one
       file, or uses custom code, so they cannot be safely edited here. Edit the files on disk.</p></div>`}
@@ -862,6 +1128,10 @@ async function viewExamples(name) {
       <a class="btn" href="#/p/${esc(name)}" data-link>Cancel</a>
     </div>`;
   renderTestRows();
+
+  app().querySelectorAll('[data-act="dup-proj"]').forEach((b) => b.addEventListener('click', () => duplicateProject(b.dataset.name)));
+  app().querySelectorAll('[data-act="arch-proj"]').forEach((b) => b.addEventListener('click', () => archiveProject(b.dataset.name, b.dataset.on === '1')));
+  app().querySelectorAll('[data-act="del-proj"]').forEach((b) => b.addEventListener('click', () => deleteProject(b.dataset.name)));
 }
 
 function renderTestRows() {
@@ -879,35 +1149,72 @@ function renderTestRows() {
 /* -------------------------------------------------------- view: history */
 
 async function viewHistory(name) {
+  crumbs({ label: 'Projects', href: '#/projects' }, { label: name, href: `#/p/${name}` }, { label: 'History' });
+  const p = state.project?.name === name ? state.project : await api(`/api/projects/${name}`);
+  state.project = p;
   const history = await api(`/api/projects/${name}/history`);
-  const rows = history.runs.map((r) => `
-    <tr>
-      <td>${esc(timeAgo(r.started_at))}</td>
-      <td><strong>${esc(r.winner || '—')}</strong></td>
-      <td class="num">${r.n_results ?? '—'}</td>
-      <td class="num">${r.total_cost_usd != null ? '$' + Number(r.total_cost_usd).toFixed(4) : '—'}</td>
-      <td>${r.status === 'complete' ? '<span class="pill good">complete</span>' : `<span class="pill warn">${esc(r.status)}</span>`}</td>
-      <td class="right"><a class="btn btn-sm" href="#/p/${esc(name)}/results?run=${esc(r.run_id)}" data-run="${esc(r.run_id)}" data-name="${esc(name)}">View</a></td>
-    </tr>`).join('');
+  const isCompleteStatus = (s) => !s || s === 'completed' || s === 'complete' || s === 'done';
+  const groups = groupRunsByDate(history.runs);
 
   app().innerHTML = `
-    <div class="page-head">
-      <div class="eyebrow">${esc(name)}</div>
-      <h1>Past runs</h1>
-      <p class="lede">Models change under you. Re-running the same evaluation after a provider
-      update is how you catch a quality drop before your users do.</p>
-    </div>
-    ${history.runs.length ? `
-      <div class="card">
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>When</th><th>Winner</th><th class="num">Calls</th><th class="num">Cost</th><th>Status</th><th></th></tr></thead>
-            <tbody>${rows}</tbody>
-          </table>
-        </div>
-      </div>
+    ${renderProjectHeader(p, 'history')}
+
+    ${groups.length ? `
+      ${groups.map((g) => `
+        <div class="run-date-group">
+          <div class="run-date-heading">
+            <div class="run-date-title">
+              <span>${esc(g.date)}</span>
+            </div>
+            <span class="pill mute">${g.runs.length} run${g.runs.length === 1 ? '' : 's'}</span>
+          </div>
+          <div class="grid-scroll"><table class="data">
+            <thead><tr><th>Time</th><th>Top Model</th><th class="num">Calls</th><th class="num">Cost</th><th>Status</th><th class="right">Actions</th></tr></thead>
+            <tbody>${g.runs.map((r) => `
+              <tr>
+                <td>
+                  <strong>${esc(formatTime(r.started_at) || '—')}</strong>
+                  <span class="hint font-mono">(${esc(timeAgo(r.started_at))})</span>
+                  <br><span class="hint font-mono small">${esc(r.run_id)}</span>
+                </td>
+                <td>${r.winner ? `<span class="pill winner">★ ${esc(r.winner)}</span>` : '<span class="muted">—</span>'}</td>
+                <td class="num">${r.n_results != null ? r.n_results.toLocaleString() : '—'}</td>
+                <td class="num">${r.total_cost_usd != null ? '$' + Number(r.total_cost_usd).toFixed(4) : '—'}</td>
+                <td>${isCompleteStatus(r.status) ? '<span class="status-clean good">complete</span>' : `<span class="pill warn">${esc(r.status)}</span>`}</td>
+                <td class="right">
+                  <div class="dropdown">
+                    <button class="icon-btn dropdown-toggle" aria-label="Run actions" data-dropdown-toggle>
+                      <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+                    </button>
+                    <div class="dropdown-menu">
+                      <a class="dropdown-item" href="#/p/${esc(name)}/results?run=${esc(r.run_id)}" data-link>
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                        View results
+                      </a>
+                      <a class="dropdown-item" href="#/p/${esc(name)}/cases/${esc(r.run_id)}" data-link>
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+                        Inspect cases
+                      </a>
+                      <div class="dropdown-divider"></div>
+                      <button class="dropdown-item danger" data-rmrun="${esc(r.run_id)}" data-proj="${esc(name)}">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                        Delete run
+                      </button>
+                    </div>
+                  </div>
+                </td>
+              </tr>`).join('')}</tbody>
+          </table></div>
+        </div>`).join('')}
       ${renderTrend(history.models)}` : '<div class="empty"><p>No runs yet.</p></div>'}
     <p class="btn-row"><a class="btn" href="#/p/${esc(name)}" data-link>Back to the evaluation</a></p>`;
+
+  app().querySelectorAll('[data-act="dup-proj"]').forEach((b) => b.addEventListener('click', () => duplicateProject(b.dataset.name)));
+  app().querySelectorAll('[data-act="arch-proj"]').forEach((b) => b.addEventListener('click', () => archiveProject(b.dataset.name, b.dataset.on === '1')));
+  app().querySelectorAll('[data-act="del-proj"]').forEach((b) => b.addEventListener('click', () => deleteProject(b.dataset.name)));
+
+  app().querySelectorAll('[data-rmrun]').forEach((b) =>
+    b.addEventListener('click', () => deleteRun(b.dataset.proj, b.dataset.rmrun)));
 }
 
 /** Accuracy over time, drawn as inline SVG so there is no chart library to load. */
@@ -915,7 +1222,7 @@ function renderTrend(series) {
   const models = Object.entries(series).filter(([, points]) => points.length > 1);
   if (!models.length) return '';
   const width = 640, height = 200, pad = 30;
-  const colors = ['#2b5cdb', '#147a45', '#9a6400', '#b3261e', '#7a3fc9'];
+  const colors = ['#2563eb', '#16a34a', '#d97706', '#dc2626', '#7c3aed'];
   const count = Math.max(...models.map(([, p]) => p.length));
 
   const lines = models.map(([key, points], index) => {
@@ -1197,36 +1504,141 @@ async function viewOverview() {
 
   const withRuns = projects.filter((p) => p.last_run);
   const spend = withRuns.reduce((sum, p) => sum + (p.last_run.total_cost_usd || 0), 0);
+  const totalTests = projects.reduce((sum, p) => sum + (p.tests || 0), 0);
+  const totalModels = projects.reduce((sum, p) => sum + (p.models || 0), 0);
 
   app().innerHTML = `
-    <h1>Overview</h1>
-    <p class="lede">Every evaluation answers one question: <em>for this job, which AI model
-    should we actually use?</em></p>
-
-    <div class="stat-row">
-      <div class="card stat"><span class="v">${projects.length}</span><span class="k">evaluation${projects.length === 1 ? '' : 's'}</span></div>
-      <div class="card stat"><span class="v">${withRuns.length}</span><span class="k">have been run</span></div>
-      <div class="card stat"><span class="v">${spend ? '$' + spend.toFixed(4) : '$0'}</span><span class="k">spent, last run of each</span></div>
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">AI Engineering Studio</div>
+        <h1>Overview</h1>
+        <p class="lede">Empirical evaluations, latency benchmarks, and cost analysis across frontier &amp; local LLMs.
+        Rank models on your real-world test cases and production constraints.</p>
+      </div>
+      <div class="btn-row">
+        <a class="btn btn-primary" href="#/new" data-link>
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          <span>New evaluation</span>
+        </a>
+      </div>
     </div>
 
-    <h2>Recent results</h2>
-    ${withRuns.length ? `
-      <div class="grid-scroll"><table class="data">
-        <thead><tr><th>evaluation</th><th>winner</th><th>when</th><th class="num">cost</th><th></th></tr></thead>
-        <tbody>${withRuns.map((p) => `
-          <tr>
-            <td><a href="#/p/${esc(p.name)}" data-link>${esc(p.name)}</a></td>
-            <td>${esc(p.last_run.winner || '—')}</td>
-            <td>${esc(timeAgo(p.last_run.started_at))}</td>
-            <td class="num">${p.last_run.total_cost_usd != null ? '$' + Number(p.last_run.total_cost_usd).toFixed(4) : '—'}</td>
-            <td><a class="btn btn-sm" href="#/p/${esc(p.name)}/results" data-link>View</a></td>
-          </tr>`).join('')}</tbody>
-      </table></div>`
-      : `<div class="empty">
-           <h2>Nothing has been run yet</h2>
-           <p>The example evaluations work offline with no API key — a good first run.</p>
-           <p class="btn-row"><a class="btn btn-primary" href="#/projects" data-link>See the evaluations</a></p>
-         </div>`}`;
+    <div class="stat-row">
+      <div class="stat accent">
+        <span class="k">Evaluations</span>
+        <span class="v">${projects.length}</span>
+        <span class="sub">${withRuns.length} sweep${withRuns.length === 1 ? '' : 's'} completed</span>
+      </div>
+      <div class="stat blue">
+        <span class="k">Models Benchmarked</span>
+        <span class="v">${totalModels}</span>
+        <span class="sub">Across all projects</span>
+      </div>
+      <div class="stat good">
+        <span class="k">Test Examples</span>
+        <span class="v">${totalTests}</span>
+        <span class="sub">Verified golden assertions</span>
+      </div>
+      <div class="stat">
+        <span class="k">Cumulative Spend</span>
+        <span class="v">${spend ? '$' + spend.toFixed(4) : '$0.00'}</span>
+        <span class="sub">Last sweep of each eval</span>
+      </div>
+    </div>
+
+
+    <div class="split-2col" style="margin-top: 1.25rem;">
+      <div>
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">Recent evaluation sweeps</h2>
+            <a class="btn btn-sm" href="#/projects" data-link>View all</a>
+          </div>
+          ${withRuns.length ? `
+            <div class="grid-scroll"><table class="data">
+              <thead><tr><th>Evaluation</th><th>Top Model</th><th>When</th><th class="num">Cost</th><th class="right">Action</th></tr></thead>
+              <tbody>${withRuns.map((p) => `
+                <tr>
+                  <td>
+                    <a href="#/p/${esc(p.name)}" data-link><strong>${esc(p.name)}</strong></a>
+                    ${p.description ? `<br><span class="hint">${esc(p.description.slice(0, 50))}${p.description.length > 50 ? '…' : ''}</span>` : ''}
+                  </td>
+                  <td>${p.last_run.winner ? `<span class="pill winner">★ ${esc(p.last_run.winner)}</span>` : '<span class="pill mute">—</span>'}</td>
+                  <td class="small muted">${esc(timeAgo(p.last_run.started_at))}</td>
+                  <td class="num">${p.last_run.total_cost_usd != null ? '$' + Number(p.last_run.total_cost_usd).toFixed(4) : '—'}</td>
+                  <td class="row-actions">
+                    <a class="btn btn-sm" href="#/p/${esc(p.name)}/results" data-link>Results</a>
+                  </td>
+                </tr>`).join('')}</tbody>
+            </table></div>`
+            : `<div class="empty">
+                 <h2>No sweeps run yet</h2>
+                 <p class="small muted">Run your first evaluation to generate comparative leaderboards and cost metrics.</p>
+                 <p class="btn-row" style="justify-content:center"><a class="btn btn-primary" href="#/projects" data-link>Go to evaluations</a></p>
+               </div>`}
+        </div>
+      </div>
+
+      <div>
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">CLI Quickstart</h2>
+            <span class="badge-tag live-tag"><span class="dot live"></span>Offline-first</span>
+          </div>
+          <p class="small muted">Validate and execute evaluations locally with zero API keys using built-in simulated providers:</p>
+          <pre><code># Validate project configuration
+arena validate --project projects/support_triage
+
+# Run sweep without UI
+arena evaluate --project projects/support_triage</code></pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top: 1.25rem;">
+      <div class="card-header">
+        <h2 class="card-title">Active AI projects</h2>
+        <span class="badge-tag">${projects.length} project${projects.length === 1 ? '' : 's'}</span>
+      </div>
+      <div class="grid">
+        ${projects.map((p) => `
+          <a class="project-card" href="#/p/${esc(p.name)}" data-link>
+            <h3>${esc(p.project || p.name)}</h3>
+            <p class="small muted mb0">${esc(p.description || 'No description yet.')}</p>
+            <div class="meta" style="margin-top:auto; padding-top:.4rem;">
+              <span>${p.models} model${p.models === 1 ? '' : 's'} · ${p.tests} test${p.tests === 1 ? '' : 's'}</span>
+              ${p.last_run?.winner ? `<br><span class="small" style="color:var(--accent)">Top: <strong>${esc(p.last_run.winner)}</strong></span>` : ''}
+            </div>
+          </a>`).join('')}
+      </div>
+    </div>
+
+    <div class="grid-2col" style="margin-top: 1.25rem;">
+      <details class="aws-expandable" open>
+        <summary>Evaluation Methodology &amp; Constraints</summary>
+        <div class="expand-body">
+          <p class="small">Agent Arena applies three strict gates before ranking models:</p>
+          <ul class="small muted" style="padding-left: 1.2rem; margin: .4rem 0;">
+            <li><strong>Accuracy Floor:</strong> Models failing minimum precision are disqualified, not merely penalized.</li>
+            <li><strong>Cost Ceiling:</strong> Hard max $ budget per 1,000 requests.</li>
+            <li><strong>Latency P95:</strong> Real wall-clock latency limits for production readiness.</li>
+          </ul>
+          <p class="small muted mb0">Composite scores are normalized only across models satisfying all constraints.</p>
+        </div>
+      </details>
+
+      <div class="card">
+        <h2 class="card-title">System Status</h2>
+        <div class="model-line" style="margin-top: .6rem;">
+          <span>Engine Runtime</span>
+          <span class="pill ok">Standard Library (Zero dependencies)</span>
+        </div>
+        <div class="model-line">
+          <span>Provider Connectors</span>
+          <span class="pill mute">Lazy SDK / Offline Fallbacks</span>
+        </div>
+      </div>
+    </div>`;
 }
 
 /* ------------------------------------------------------- view: projects */
@@ -1236,35 +1648,133 @@ async function viewProjects() {
   const { projects } = await api('/api/projects?all=1');
   state.projects = projects;
 
+  const withRuns = projects.filter((p) => p.last_run);
+
   app().innerHTML = `
-    <div class="head-row">
-      <h1>Projects</h1>
-      <a class="btn btn-primary" href="#/new" data-link>New evaluation</a>
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">Evaluations Directory</div>
+        <h1>Evaluations</h1>
+        <p class="lede">All configured model evaluation benchmark projects and test suites.</p>
+      </div>
+      <div class="btn-row">
+        <a class="btn btn-primary" href="#/new" data-link>
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          <span>New evaluation</span>
+        </a>
+      </div>
     </div>
+
+    <div class="model-toolbar" style="margin-bottom: 1.25rem;">
+      <div class="model-filter-chips" id="proj-filter-chips">
+        <button class="filter-chip active" data-proj-filter="all">All (${projects.length})</button>
+        <button class="filter-chip" data-proj-filter="active">Active (${projects.filter(p => !p.archived).length})</button>
+        <button class="filter-chip" data-proj-filter="swept">Swept (${withRuns.length})</button>
+        <button class="filter-chip" data-proj-filter="archived">Archived (${projects.filter(p => p.archived).length})</button>
+      </div>
+      <div class="model-search-box">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input type="search" id="proj-search" placeholder="Search evaluations by name or description…" aria-label="Search evaluations">
+      </div>
+    </div>
+
     ${projects.length ? `
-      <div class="grid-scroll"><table class="data">
-        <thead><tr><th>name</th><th>models</th><th>examples</th><th>last run</th><th>status</th><th></th></tr></thead>
+      <div class="grid-scroll"><table class="data" id="proj-table">
+        <thead><tr><th>Evaluation</th><th>Models</th><th>Examples</th><th>Last Sweep</th><th>Top Winner</th><th>Status</th><th class="right">Actions</th></tr></thead>
         <tbody>${projects.map((p) => `
-          <tr class="${p.archived ? 'is-gone' : ''}">
-            <td><a href="#/p/${esc(p.name)}" data-link><strong>${esc(p.name)}</strong></a>
-                <br><span class="hint">${esc((p.description || '').slice(0, 90))}</span></td>
+          <tr class="${p.archived ? 'is-gone' : ''}" data-proj-name="${esc(p.name)}" data-proj-title="${esc(p.project || p.name)}" data-proj-desc="${esc(p.description || '')}" data-archived="${p.archived ? 'true' : 'false'}" data-has-run="${p.last_run ? 'true' : 'false'}">
+            <td>
+              <a href="#/p/${esc(p.name)}" data-link><strong>${esc(p.project || p.name)}</strong></a>
+              ${p.project && p.project !== p.name ? `<span class="hint font-mono small"> (${esc(p.name)})</span>` : ''}
+              ${p.description ? `<br><span class="hint">${esc((p.description || '').slice(0, 85))}${p.description.length > 85 ? '…' : ''}</span>` : ''}
+            </td>
             <td class="num">${p.models}</td>
             <td class="num">${p.tests}</td>
             <td>${p.last_run ? esc(timeAgo(p.last_run.started_at)) : '<span class="hint">never</span>'}</td>
+            <td>${p.last_run?.winner ? `<span class="pill winner">★ ${esc(p.last_run.winner)}</span>` : '<span class="pill mute">—</span>'}</td>
             <td>${p.archived ? '<span class="pill mute">archived</span>' : '<span class="pill ok">active</span>'}</td>
-            <td class="row-actions">
-              <button class="btn btn-sm" data-dup="${esc(p.name)}">Duplicate</button>
-              <button class="btn btn-sm" data-arch="${esc(p.name)}" data-on="${p.archived ? '0' : '1'}">${p.archived ? 'Unarchive' : 'Archive'}</button>
-              <button class="btn btn-sm btn-danger" data-del="${esc(p.name)}">Delete</button>
+            <td class="right">
+              <div class="dropdown">
+                <button class="icon-btn dropdown-toggle" aria-label="Project actions" data-dropdown-toggle>
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+                </button>
+                <div class="dropdown-menu">
+                  <a class="dropdown-item" href="#/p/${esc(p.name)}" data-link>
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/></svg>
+                    Open overview
+                  </a>
+                  <a class="dropdown-item" href="#/p/${esc(p.name)}/results" data-link>
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                    View results
+                  </a>
+                  <button class="dropdown-item" data-act="dup-proj" data-name="${esc(p.name)}">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                    Duplicate
+                  </button>
+                  <button class="dropdown-item" data-act="arch-proj" data-name="${esc(p.name)}" data-on="${p.archived ? '0' : '1'}">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4"/></svg>
+                    ${p.archived ? 'Restore' : 'Archive'}
+                  </button>
+                  <div class="dropdown-divider"></div>
+                  <button class="dropdown-item danger" data-act="del-proj" data-name="${esc(p.name)}">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    Delete
+                  </button>
+                </div>
+              </div>
             </td>
           </tr>`).join('')}</tbody>
       </table></div>`
       : `<div class="empty"><h2>No evaluations yet</h2>
            <p class="btn-row"><a class="btn btn-primary" href="#/new" data-link>Create one</a></p></div>`}`;
 
-  app().querySelectorAll('[data-dup]').forEach((b) => b.addEventListener('click', () => duplicateProject(b.dataset.dup)));
-  app().querySelectorAll('[data-arch]').forEach((b) => b.addEventListener('click', () => archiveProject(b.dataset.arch, b.dataset.on === '1')));
-  app().querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', () => deleteProject(b.dataset.del)));
+  const searchInput = document.getElementById('proj-search');
+  const chipContainer = document.getElementById('proj-filter-chips');
+  const table = document.getElementById('proj-table');
+
+  function applyProjFilter() {
+    if (!table) return;
+    const query = (searchInput?.value || '').trim().toLowerCase();
+    const activeChip = chipContainer?.querySelector('.filter-chip.active');
+    const activeFilter = activeChip?.getAttribute('data-proj-filter') || 'all';
+
+    const rows = table.querySelectorAll('tbody tr[data-proj-name]');
+    rows.forEach((row) => {
+      const name = (row.getAttribute('data-proj-name') || '').toLowerCase();
+      const title = (row.getAttribute('data-proj-title') || '').toLowerCase();
+      const desc = (row.getAttribute('data-proj-desc') || '').toLowerCase();
+      const isArchived = row.getAttribute('data-archived') === 'true';
+      const hasRun = row.getAttribute('data-has-run') === 'true';
+
+      let matchesFilter = true;
+      if (activeFilter === 'active') matchesFilter = !isArchived;
+      else if (activeFilter === 'swept') matchesFilter = hasRun;
+      else if (activeFilter === 'archived') matchesFilter = isArchived;
+
+      const matchesSearch = !query || name.includes(query) || title.includes(query) || desc.includes(query);
+      row.style.display = (matchesFilter && matchesSearch) ? '' : 'none';
+    });
+  }
+
+  if (chipContainer) {
+    chipContainer.addEventListener('click', (e) => {
+      const btn = e.target.closest('.filter-chip');
+      if (!btn) return;
+      chipContainer.querySelectorAll('.filter-chip').forEach((c) => c.classList.remove('active'));
+      btn.classList.add('active');
+      applyProjFilter();
+    });
+  }
+
+  if (searchInput) {
+    searchInput.addEventListener('input', applyProjFilter);
+  }
+
+  app().querySelectorAll('[data-act="dup-proj"]').forEach((b) => b.addEventListener('click', () => duplicateProject(b.dataset.name)));
+  app().querySelectorAll('[data-act="arch-proj"]').forEach((b) => b.addEventListener('click', () => archiveProject(b.dataset.name, b.dataset.on === '1')));
+  app().querySelectorAll('[data-act="del-proj"]').forEach((b) => b.addEventListener('click', () => deleteProject(b.dataset.name)));
 }
 
 async function duplicateProject(name) {
@@ -1308,27 +1818,153 @@ async function viewAllRuns() {
     } catch { return []; }
   }));
   const runs = lists.flat().sort((a, b) => String(b.started_at).localeCompare(String(a.started_at)));
+  const groups = groupRunsByDate(runs);
+  const uniqueProjects = Array.from(new Set(runs.map((r) => r.project_name))).sort();
+  const isCompleteStatus = (s) => !s || s === 'completed' || s === 'complete' || s === 'done';
+  const completeRuns = runs.filter((r) => isCompleteStatus(r.status));
+  const winnerRuns = runs.filter((r) => r.winner);
 
   app().innerHTML = `
-    <h1>Runs</h1>
-    <p class="lede">Every run across every evaluation, newest first.</p>
+    <div class="head-row">
+      <div>
+        <h1>Evaluation Runs</h1>
+        <p class="lede">Benchmark sweeps separated by execution date and timestamp.</p>
+      </div>
+      <div>
+        <span class="badge-tag"><strong>${runs.length}</strong> total run${runs.length === 1 ? '' : 's'}</span>
+      </div>
+    </div>
+
     ${runs.length ? `
-      <div class="grid-scroll"><table class="data">
-        <thead><tr><th>when</th><th>evaluation</th><th>winner</th><th class="num">calls</th><th class="num">cost</th><th></th></tr></thead>
-        <tbody>${runs.map((r) => `
-          <tr>
-            <td>${esc(timeAgo(r.started_at))}${r.label ? `<br><span class="hint">${esc(r.label)}</span>` : ''}</td>
-            <td><a href="#/p/${esc(r.project_name)}" data-link>${esc(r.project_name)}</a></td>
-            <td>${esc(r.winner || '—')}</td>
-            <td class="num">${r.n_results ?? '—'}</td>
-            <td class="num">${r.total_cost_usd != null ? '$' + Number(r.total_cost_usd).toFixed(4) : '—'}</td>
-            <td class="row-actions">
-              <a class="btn btn-sm" href="#/p/${esc(r.project_name)}/cases/${esc(r.run_id)}" data-link>Cases</a>
-              <button class="btn btn-sm btn-danger" data-rmrun="${esc(r.run_id)}" data-proj="${esc(r.project_name)}">Delete</button>
-            </td>
-          </tr>`).join('')}</tbody>
-      </table></div>`
-      : '<div class="empty"><h2>No runs yet</h2></div>'}`;
+      <div class="model-toolbar" style="margin-bottom: 1.5rem;">
+        <div class="model-filter-chips" id="run-filter-chips">
+          <button class="filter-chip active" data-run-filter="all">All (${runs.length})</button>
+          <button class="filter-chip" data-run-filter="complete">Complete (${completeRuns.length})</button>
+          <button class="filter-chip" data-run-filter="winner">With Winner (${winnerRuns.length})</button>
+          ${uniqueProjects.length > 1 ? uniqueProjects.map((p) =>
+            `<button class="filter-chip" data-run-filter="proj:${esc(p)}">${esc(p)}</button>`
+          ).join('') : ''}
+        </div>
+        <div class="model-search-box">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="search" id="run-search" placeholder="Filter runs by evaluation, run ID, model, or label…" aria-label="Filter runs" autocomplete="off">
+        </div>
+      </div>
+
+      <div id="run-groups-container">
+        ${groups.map((g) => `
+          <div class="run-date-group">
+            <div class="run-date-heading">
+              <div class="run-date-title">
+                <span>${esc(g.date)}</span>
+              </div>
+              <span class="pill mute">${g.runs.length} run${g.runs.length === 1 ? '' : 's'}</span>
+            </div>
+            <div class="grid-scroll"><table class="data">
+              <thead><tr><th>Time</th><th>Evaluation</th><th>Top Model</th><th class="num">Calls</th><th class="num">Cost</th><th>Status</th><th class="right">Actions</th></tr></thead>
+              <tbody>${g.runs.map((r) => `
+                <tr data-project="${esc(r.project_name)}" data-status="${isCompleteStatus(r.status) ? 'complete' : esc(r.status)}" data-has-winner="${r.winner ? 'true' : 'false'}" data-search="${esc((r.project_name + ' ' + r.run_id + ' ' + (r.winner || '') + ' ' + (r.label || '') + ' ' + (isCompleteStatus(r.status) ? 'complete' : r.status) + ' ' + (formatTime(r.started_at) || '')).toLowerCase())}">
+                  <td>
+                    <strong>${esc(formatTime(r.started_at) || '—')}</strong>
+                    <span class="hint font-mono">(${esc(timeAgo(r.started_at))})</span>
+                    ${r.label ? `<br><span class="hint font-mono">${esc(r.label)}</span>` : ''}
+                  </td>
+                  <td>
+                    <a href="#/p/${esc(r.project_name)}" data-link><strong>${esc(r.project_name)}</strong></a>
+                    <br><span class="hint font-mono small">${esc(r.run_id)}</span>
+                  </td>
+                  <td>${r.winner ? `<span class="pill winner">${esc(r.winner)}</span>` : '<span class="muted">—</span>'}</td>
+                  <td class="num">${r.n_results != null ? r.n_results.toLocaleString() : '—'}</td>
+                  <td class="num">${r.total_cost_usd != null ? '$' + Number(r.total_cost_usd).toFixed(4) : '—'}</td>
+                  <td>${isCompleteStatus(r.status) ? '<span class="status-clean good">complete</span>' : `<span class="pill warn">${esc(r.status)}</span>`}</td>
+                  <td class="right">
+                    <div class="dropdown">
+                      <button class="icon-btn dropdown-toggle" aria-label="Run actions" data-dropdown-toggle>
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+                      </button>
+                      <div class="dropdown-menu">
+                        <a class="dropdown-item" href="#/p/${esc(r.project_name)}/results?run=${esc(r.run_id)}" data-link>
+                          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                          View results
+                        </a>
+                        <a class="dropdown-item" href="#/p/${esc(r.project_name)}/cases/${esc(r.run_id)}" data-link>
+                          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+                          Inspect cases
+                        </a>
+                        <div class="dropdown-divider"></div>
+                        <button class="dropdown-item danger" data-rmrun="${esc(r.run_id)}" data-proj="${esc(r.project_name)}">
+                          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2 2v2"/></svg>
+                          Delete run
+                        </button>
+                      </div>
+                    </div>
+                  </td>
+                </tr>`).join('')}</tbody>
+            </table></div>
+          </div>`).join('')}
+      </div>
+      <div class="empty" id="run-filter-empty" style="display:none;margin-top:1.5rem;">
+        <h2>No matching evaluation runs</h2>
+        <p class="muted small">No sweeps match the selected filter criteria or search query.</p>
+      </div>`
+      : '<div class="empty"><h2>No runs yet</h2><p>Run an evaluation to start collecting benchmark results.</p></div>'}`;
+
+  // Interactive Live Filter & Search across all runs
+  let activeRunFilter = 'all';
+  const searchInput = document.getElementById('run-search');
+  const chipContainer = document.getElementById('run-filter-chips');
+
+  function applyRunFilter() {
+    const query = (searchInput?.value || '').trim().toLowerCase();
+    const rows = app().querySelectorAll('.run-date-group tbody tr');
+    rows.forEach((row) => {
+      const proj = row.getAttribute('data-project') || '';
+      const status = row.getAttribute('data-status') || '';
+      const hasWinner = row.getAttribute('data-has-winner') === 'true';
+      const search = row.getAttribute('data-search') || '';
+
+      let matchesFilter = true;
+      if (activeRunFilter === 'complete') {
+        matchesFilter = status === 'complete';
+      } else if (activeRunFilter === 'winner') {
+        matchesFilter = hasWinner;
+      } else if (activeRunFilter.startsWith('proj:')) {
+        matchesFilter = proj === activeRunFilter.slice(5);
+      }
+
+      const matchesSearch = !query || search.includes(query);
+      row.style.display = (matchesFilter && matchesSearch) ? '' : 'none';
+    });
+
+    let totalVisible = 0;
+    app().querySelectorAll('.run-date-group').forEach((grp) => {
+      const visibleRows = grp.querySelectorAll('tbody tr:not([style*="display: none"])');
+      grp.style.display = visibleRows.length ? '' : 'none';
+      totalVisible += visibleRows.length;
+    });
+
+    const emptyFilter = document.getElementById('run-filter-empty');
+    if (emptyFilter) {
+      emptyFilter.style.display = (runs.length > 0 && totalVisible === 0) ? '' : 'none';
+    }
+  }
+
+  if (chipContainer) {
+    chipContainer.addEventListener('click', (e) => {
+      const btn = e.target.closest('.filter-chip');
+      if (!btn) return;
+      chipContainer.querySelectorAll('.filter-chip').forEach((c) => c.classList.remove('active'));
+      btn.classList.add('active');
+      activeRunFilter = btn.getAttribute('data-run-filter') || 'all';
+      applyRunFilter();
+    });
+  }
+
+  if (searchInput) {
+    searchInput.addEventListener('input', applyRunFilter);
+  }
 
   app().querySelectorAll('[data-rmrun]').forEach((b) =>
     b.addEventListener('click', () => deleteRun(b.dataset.proj, b.dataset.rmrun)));
@@ -1616,83 +2252,359 @@ function renderProviderForm(profile) {
 /* ------------------------------------------------------- view: settings */
 
 const SETTINGS_TABS = [
-  ['general', 'General'],
-  ['defaults', 'Defaults'],
-  ['budgets', 'Budgets & safety'],
-  ['storage', 'Storage'],
-  ['about', 'About'],
+  ['general', 'General', 'Preferences & appearance'],
+  ['defaults', 'Defaults', 'Default sweep parameters'],
+  ['budgets', 'Budgets & safety', 'Spending caps & thresholds'],
+  ['storage', 'Storage', 'Database cleanup & vacuum'],
+  ['about', 'About', 'Engine version & docs'],
 ];
 
 async function viewSettings(tab = 'general') {
   crumbs({ label: 'Settings' });
-  const settings = await api('/api/settings');
+  const [settings, about] = await Promise.all([
+    api('/api/settings'),
+    api('/api/about').catch(() => ({
+      version: state.catalog?.version || '2.0.0rc1',
+      release_channel: 'Release Candidate (v2.0.0rc1)',
+      license: 'MIT',
+      author: 'Aditya Mhaske',
+      python: '3.12+',
+      platform: 'Darwin',
+      yaml: true,
+      scorers_count: 10,
+      models_count: 30,
+      pricing_as_of: '2026-09-02',
+      storage_engine: 'SQLite 3 (WAL mode, local zero-network store)',
+      docs_url: 'https://adityamhaske.github.io/agent-arena',
+      repo_url: 'https://github.com/adityamhaske/agent-arena',
+    })),
+  ]);
   state.settings = settings;
 
-  const tabs = SETTINGS_TABS.map(([slug, label]) =>
-    `<a href="#/settings/${slug}" data-link class="${slug === tab ? 'on' : ''}">${esc(label)}</a>`).join('');
+  const tabs = SETTINGS_TABS.map(([slug, label, desc]) => `
+    <a href="#/settings/${slug}" data-link class="settings-nav-item ${slug === tab ? 'on' : ''}">
+      <span class="settings-nav-title">${esc(label)}</span>
+      <span class="settings-nav-desc">${esc(desc)}</span>
+    </a>`).join('');
 
   const panels = {
     general: () => `
-      <div class="field"><label for="s-theme">Theme</label>
+      <h2>Workspace & Appearance</h2>
+      <p class="hint">Global interface preferences, directories, and workspace behavior.</p>
+
+      <div class="field">
+        <label for="s-theme">Theme</label>
         <select id="s-theme" data-set="theme" data-applies-now="theme">
           ${['system', 'light', 'dark'].map((t) =>
-            `<option ${settings.theme === t ? 'selected' : ''}>${t}</option>`).join('')}
-        </select></div>
-      <div class="field"><label for="s-dir">Projects folder</label>
-        <input id="s-dir" data-set="projects_dir" value="${esc(settings.projects_dir || '')}">
-        <span class="hint">Where <code>arena ui</code> looks for evaluations.</span></div>`,
+            `<option value="${t}" ${settings.theme === t ? 'selected' : ''}>${t.charAt(0).toUpperCase() + t.slice(1)}</option>`).join('')}
+        </select>
+        <span class="hint">Color scheme for the evaluation studio interface.</span>
+      </div>
+
+      <div class="field">
+        <label for="s-dir">Evaluations folder</label>
+        <input id="s-dir" data-set="projects_dir" value="${esc(settings.projects_dir || 'projects')}">
+        <span class="hint">Directory path relative to current workspace where evaluations live.</span>
+      </div>
+
+      <div class="field">
+        <label for="s-landing">Default landing view</label>
+        <select id="s-landing" data-set="default_landing">
+          <option value="overview" ${settings.default_landing === 'overview' ? 'selected' : ''}>Overview Dashboard (#/)</option>
+          <option value="projects" ${settings.default_landing === 'projects' ? 'selected' : ''}>Evaluations Directory (#/projects)</option>
+          <option value="runs" ${settings.default_landing === 'runs' ? 'selected' : ''}>Global Runs Stream (#/runs)</option>
+        </select>
+        <span class="hint">Initial surface displayed when launching Agent Arena.</span>
+      </div>
+
+      <div class="field">
+        <label for="s-density">UI density</label>
+        <select id="s-density" data-set="density">
+          <option value="comfortable" ${settings.density === 'comfortable' ? 'selected' : ''}>Comfortable (Standard padding)</option>
+          <option value="compact" ${settings.density === 'compact' ? 'selected' : ''}>Compact (Dense, information-heavy tables)</option>
+        </select>
+        <span class="hint">Controls row height and card margins across leaderboard tables.</span>
+      </div>
+
+      <div class="field">
+        <label for="s-num-fmt">Thousands separator</label>
+        <select id="s-num-fmt" data-set="number_format">
+          <option value="comma" ${settings.number_format === 'comma' ? 'selected' : ''}>Comma (1,000,000)</option>
+          <option value="space" ${settings.number_format === 'space' ? 'selected' : ''}>Space (1 000 000)</option>
+          <option value="none" ${settings.number_format === 'none' ? 'selected' : ''}>None (1000000)</option>
+        </select>
+        <span class="hint">Formatting style for counts and tokens in benchmark results.</span>
+      </div>
+
+      <div class="field">
+        <label for="s-tz">Display timezone</label>
+        <select id="s-tz" data-set="timezone">
+          <option value="local" ${settings.timezone === 'local' ? 'selected' : ''}>Local system time (${Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local'})</option>
+          <option value="UTC" ${settings.timezone === 'UTC' ? 'selected' : ''}>UTC (Coordinated Universal Time)</option>
+        </select>
+        <span class="hint">Timezone used when rendering timestamps across the UI.</span>
+      </div>
+
+      <div class="field">
+        <label for="s-log_level">Engine log level</label>
+        <select id="s-log_level" data-set="log_level">
+          <option value="warning" ${settings.log_level === 'warning' ? 'selected' : ''}>Warning (Quiet — only warnings and errors)</option>
+          <option value="info" ${settings.log_level === 'info' ? 'selected' : ''}>Info (Standard execution status)</option>
+          <option value="debug" ${settings.log_level === 'debug' ? 'selected' : ''}>Debug (Verbose API completion traces)</option>
+          <option value="error" ${settings.log_level === 'error' ? 'selected' : ''}>Error (Strict fatal errors only)</option>
+        </select>
+        <span class="hint">Controls stdout verbosity during CLI sweeps and background jobs.</span>
+      </div>
+
+      <div class="field checkbox-field">
+        <label class="check">
+          <input type="checkbox" id="s-open_browser" data-set="open_browser" ${settings.open_browser !== false ? 'checked' : ''}>
+          <span>Open browser window automatically on <code>arena ui</code> launch</span>
+        </label>
+      </div>
+
+      <div class="field checkbox-field">
+        <label class="check">
+          <input type="checkbox" id="s-update_check" data-set="update_check" ${settings.update_check !== false ? 'checked' : ''}>
+          <span>Check for newer versions of Agent Arena on launch</span>
+        </label>
+      </div>`,
 
     defaults: () => `
-      <p class="hint">Applied to new evaluations. An existing one keeps whatever its own config says.</p>
-      ${[['trials', 'Repeats per case'], ['concurrency', 'Calls in parallel'],
-         ['timeout_s', 'Timeout (seconds)'], ['retries', 'Retries']].map(([key, label]) => `
-        <div class="field"><label for="s-${key}">${esc(label)}</label>
-          <input id="s-${key}" type="number" data-set="${key}" value="${esc(settings[key] ?? '')}"></div>`).join('')}`,
+      <h2>Default Sweep Parameters</h2>
+      <p class="hint">Applied as default seeds when creating new evaluations. Existing evaluations preserve the values in their <code>config.yaml</code>.</p>
+
+      <div class="field">
+        <label for="s-trials">Repeats per test case (Trials)</label>
+        <input id="s-trials" type="number" min="1" max="50" data-set="defaults.trials" value="${esc(settings.defaults?.trials ?? 1)}">
+        <span class="hint">Number of times each model runs against each test prompt to detect non-deterministic variance.</span>
+      </div>
+
+      <div class="field">
+        <label for="s-concurrency">Concurrent model calls</label>
+        <input id="s-concurrency" type="number" min="1" max="64" data-set="defaults.concurrency" value="${esc(settings.defaults?.concurrency ?? 4)}">
+        <span class="hint">Max simultaneous in-flight provider API calls. Keep within your provider tier rate limits.</span>
+      </div>
+
+      <div class="field">
+        <label for="s-timeout">Per-call timeout (seconds)</label>
+        <input id="s-timeout" type="number" min="5" max="600" data-set="defaults.timeout_s" value="${esc(settings.defaults?.timeout_s ?? 120)}">
+        <span class="hint">Time ceiling for an LLM response before timing out.</span>
+      </div>
+
+      <div class="field">
+        <label for="s-retries">Retries after provider error</label>
+        <input id="s-retries" type="number" min="0" max="10" data-set="defaults.retries" value="${esc(settings.defaults?.retries ?? 2)}">
+        <span class="hint">Automatic exponential backoff retries when a provider returns transient 429 or 503 status codes.</span>
+      </div>
+
+      <div class="field">
+        <label for="s-temperature">Sampling temperature</label>
+        <input id="s-temperature" type="number" min="0" max="2" step="0.1" data-set="defaults.temperature" value="${esc(settings.defaults?.temperature ?? 0)}">
+        <span class="hint">Evaluations default to 0 for maximum determinism and reproducible scoring.</span>
+      </div>
+
+      <div class="field">
+        <label for="s-tokens">Max tokens ceiling</label>
+        <input id="s-tokens" type="number" min="16" max="32768" data-set="defaults.max_tokens" value="${esc(settings.defaults?.max_tokens ?? 512)}">
+        <span class="hint">Safety completion token ceiling per test prompt.</span>
+      </div>`,
 
     budgets: () => `
-      <p class="hint">A cap stops the sweep mid-flight and keeps whatever it already
-      collected, labelled as partial. Leave blank for no cap.</p>
-      ${[['max_run_usd', 'Stop a run above ($)'], ['max_model_usd', 'Stop one model above ($)'],
-         ['confirm_above_usd', 'Ask before starting above ($)']].map(([key, label]) => `
-        <div class="field"><label for="s-${key}">${esc(label)}</label>
-          <input id="s-${key}" type="number" step="0.01" data-set="budgets.${key}"
-                 value="${esc(settings.budgets?.[key] ?? '')}"></div>`).join('')}`,
+      <h2>Spending Caps & Safety</h2>
+      <p class="hint">Safety limits and confirmation thresholds. When a cap is reached, already completed calls are retained and marked as partial.</p>
+
+      <div class="field">
+        <label for="s-max_run_usd">Max spend per sweep run ($)</label>
+        <input id="s-max_run_usd" type="number" step="0.01" min="0" placeholder="No limit" data-set="budgets.max_run_usd" value="${esc(settings.budgets?.max_run_usd ?? '')}">
+        <span class="hint">Hard dollar ceiling. The sweep stops if the total run cost crosses this limit. Leave empty for no cap.</span>
+      </div>
+
+      <div class="field">
+        <label for="s-max_model_usd">Max spend per individual model ($)</label>
+        <input id="s-max_model_usd" type="number" step="0.01" min="0" placeholder="No limit" data-set="budgets.max_model_usd" value="${esc(settings.budgets?.max_model_usd ?? '')}">
+        <span class="hint">Ceiling per single model. Other cheaper models will continue evaluating.</span>
+      </div>
+
+      <div class="field">
+        <label for="s-confirm_above_usd">Confirmation prompt threshold ($)</label>
+        <input id="s-confirm_above_usd" type="number" step="0.01" min="0" data-set="budgets.confirm_above_usd" value="${esc(settings.budgets?.confirm_above_usd ?? 5.0)}">
+        <span class="hint">The UI asks for explicit confirmation before launching a sweep forecast above this amount.</span>
+      </div>
+
+      <div class="field">
+        <label for="s-on_exceed">Budget exceed policy</label>
+        <select id="s-on_exceed" data-set="budgets.on_exceed">
+          <option value="stop" ${settings.budgets?.on_exceed === 'stop' ? 'selected' : ''}>Stop sweep immediately (Conservative)</option>
+          <option value="warn" ${settings.budgets?.on_exceed === 'warn' ? 'selected' : ''}>Log budget warning and continue</option>
+        </select>
+        <span class="hint">Action to take when a model or run crosses the defined dollar budget.</span>
+      </div>`,
 
     storage: () => `
-      <p class="hint">Every call is written to a SQLite database beside each evaluation.
-      Deleted runs stay recoverable until a vacuum removes them for good.</p>
+      <h2>Database & Local Storage</h2>
+      <p class="hint">Agent Arena runs locally with zero external telemetry. All benchmark results, generated outputs, token counts, and latencies are persisted to local SQLite databases.</p>
+
+      <div class="card" style="margin-bottom:1.25rem;">
+        <h3 style="margin-bottom:0.35rem;">Local SQLite Architecture</h3>
+        <p class="small text-dim" style="margin-bottom:0.75rem;">
+          Each evaluation stores its results in <code>&lt;project&gt;/results/arena.sqlite</code> with Write-Ahead Logging (WAL) for safe multi-process concurrency.
+        </p>
+        <div class="stat-pill-row">
+          <div class="stat-pill"><span class="label">Storage Engine</span><span class="val font-mono">SQLite 3 (WAL)</span></div>
+          <div class="stat-pill"><span class="label">Telemetry</span><span class="val font-mono">Zero External (100% Local)</span></div>
+          <div class="stat-pill"><span class="label">Network Dependency</span><span class="val font-mono">None (Offline-First)</span></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:1.25rem;">
+        <h3 style="margin-bottom:0.35rem;">Reclaim Disk Space (Vacuum)</h3>
+        <p class="small text-dim" style="margin-bottom:0.85rem;">
+          When you delete runs, SQLite retains tombstones so they can be reviewed or exported. Vacuum permanently purges deleted runs and compacts database files on disk.
+        </p>
+        <p class="btn-row"><button class="btn btn-danger" id="s-vacuum">Vacuum all evaluation databases</button></p>
+      </div>
+
       <div class="card">
-        <p><strong>Reclaim space</strong></p>
-        <p class="hint">Permanently removes runs you have already deleted, in every evaluation.</p>
-        <p class="btn-row"><button class="btn btn-danger" id="s-vacuum">Vacuum all evaluations</button></p>
+        <h3 style="margin-bottom:0.35rem;">Factory Reset</h3>
+        <p class="small text-dim" style="margin-bottom:0.85rem;">
+          Reset all user preferences, spending caps, and runner defaults back to factory settings. Project <code>config.yaml</code> files will remain untouched.
+        </p>
+        <p class="btn-row"><button class="btn btn-outline-danger" id="s-reset">Reset settings to defaults</button></p>
       </div>`,
 
     about: () => `
-      <div class="card">
-        <p><strong>Agent Arena</strong> <span id="about-version" class="hint"></span></p>
-        <p class="hint">Structured evidence over vibes. The browser and the command line
-        share one engine, so they can never disagree about who won.</p>
+      <div class="about-hero">
+        <div class="about-hero-header">
+          <div>
+            <div class="about-badge-row">
+              <span class="badge-tag gold font-mono">v${esc(about.version)}</span>
+              <span class="badge-tag live-tag">${esc(about.release_channel || 'Release Candidate')}</span>
+              <span class="badge-tag">${esc(about.license || 'MIT Licensed')}</span>
+            </div>
+            <h2 style="font-size:1.6rem;margin:.5rem 0 .25rem;">Agent Arena</h2>
+            <p class="lede" style="font-size:.95rem;max-width:56ch;margin-bottom:0;">
+              A universal, config-driven harness for comparing LLMs on <em>your</em> real-world project.
+              Structured evidence over vibes.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="about-spec-grid">
+        <div class="about-spec-card">
+          <span class="about-spec-label">Core Engine</span>
+          <span class="about-spec-val font-mono">v${esc(about.version)}</span>
+          <span class="about-spec-sub">Zero runtime dependencies</span>
+        </div>
+        <div class="about-spec-card">
+          <span class="about-spec-label">Python Runtime</span>
+          <span class="about-spec-val font-mono">Python ${esc(about.python)}</span>
+          <span class="about-spec-sub">${esc(about.platform || 'macOS')}</span>
+        </div>
+        <div class="about-spec-card">
+          <span class="about-spec-label">Cataloged Models</span>
+          <span class="about-spec-val font-mono">${about.models_count || 30}+ models</span>
+          <span class="about-spec-sub">Pricing as of ${esc(about.pricing_as_of || '2026-09-02')}</span>
+        </div>
+        <div class="about-spec-card">
+          <span class="about-spec-label">Evaluation Scorers</span>
+          <span class="about-spec-val font-mono">${about.scorers_count || 10} registered</span>
+          <span class="about-spec-sub">Pluggable registry</span>
+        </div>
+        <div class="about-spec-card">
+          <span class="about-spec-label">Storage Engine</span>
+          <span class="about-spec-val font-mono">SQLite 3 (WAL)</span>
+          <span class="about-spec-sub">Local ACID store</span>
+        </div>
+        <div class="about-spec-card">
+          <span class="about-spec-label">Config Format</span>
+          <span class="about-spec-val font-mono">${about.yaml ? 'YAML & JSON' : 'JSON (YAML optional)'}</span>
+          <span class="about-spec-sub">Declarative config.yaml</span>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:1.5rem;">
+        <h3 style="margin-bottom:.65rem;">Key Capabilities in v2.0</h3>
+        <div class="about-features-list">
+          <div class="about-feature-item">
+            <strong>Resumable Sweeps (<code>--resume &lt;run-id&gt;</code>)</strong>
+            <p>Interrupted sweeps only re-run missing or failed calls. Never pay twice for completed benchmarks.</p>
+          </div>
+          <div class="about-feature-item">
+            <strong>Per-Provider Rate Limiting</strong>
+            <p>Token buckets for RPM, TPM, and concurrency semaphores to smoothly handle vendor throughput limits.</p>
+          </div>
+          <div class="about-feature-item">
+            <strong>Bootstrap Statistical Resolution</strong>
+            <p>Resampled paired confidence intervals on test cases. Tells you transparently when models are too close to call.</p>
+          </div>
+          <div class="about-feature-item">
+            <strong>Evaluation Drift Watcher (<code>arena watch</code>)</strong>
+            <p>Monitors model performance over time, alerting or failing CI when a model drifts or changes qualification status.</p>
+          </div>
+          <div class="about-feature-item">
+            <strong>GitHub Action Integration</strong>
+            <p>Run automated model evaluations on pull requests and post clean comparison leaderboards as comments.</p>
+          </div>
+          <div class="about-feature-item">
+            <strong>Pricing Catalog Staleness Detection</strong>
+            <p>Automatic alerts when model card pricing becomes older than 90 days.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:1.25rem;">
+        <h3 style="margin-bottom:.5rem;">Architecture Invariants</h3>
+        <ul class="about-invariants">
+          <li><strong>Stdlib-Only Core:</strong> No mandatory external Python runtime dependencies. Provider SDKs are loaded lazily on demand.</li>
+          <li><strong>Zero-Dependency Browser UI:</strong> Plain HTML, CSS, and vanilla JavaScript. Zero npm packages, zero client builds.</li>
+          <li><strong>Never Fabricate a Number:</strong> Honest resolution and empirical evidence over guessed numbers or vibes.</li>
+          <li><strong>CLI & UI Parity:</strong> Both surfaces share the exact same <code>service/</code> layer. The UI can never disagree with the CLI.</li>
+        </ul>
+      </div>
+
+      <div class="card" style="margin-top:1.25rem;">
+        <h3 style="margin-bottom:.5rem;">Documentation & Community</h3>
+        <p class="small text-dim" style="margin-bottom:.85rem;">
+          Created and maintained by <strong>${esc(about.author || 'Aditya Mhaske')}</strong>. Released under the permissive MIT License.
+        </p>
         <p class="btn-row">
-          <a class="btn" href="https://adityamhaske.github.io/agent-arena" target="_blank" rel="noopener">Documentation</a>
-          <a class="btn" href="https://github.com/adityamhaske/agent-arena" target="_blank" rel="noopener">Source</a>
+          <a class="btn btn-primary" href="https://adityamhaske.github.io/agent-arena" target="_blank" rel="noopener">
+            Official Documentation
+          </a>
+          <a class="btn" href="https://github.com/adityamhaske/agent-arena" target="_blank" rel="noopener">
+            GitHub Repository
+          </a>
+          <a class="btn" href="https://adityamhaske.github.io/agent-arena/releases/" target="_blank" rel="noopener">
+            Changelog & Releases
+          </a>
+          <a class="btn" href="https://adityamhaske.github.io/agent-arena/decisions/" target="_blank" rel="noopener">
+            Architecture Decisions
+          </a>
         </p>
       </div>`,
   };
 
   app().innerHTML = `
-    <h1>Settings</h1>
-    <div class="settings-tabs">${tabs}</div>
-    <div id="settings-panel">${(panels[tab] || panels.general)()}</div>
-    ${tab === 'storage' || tab === 'about' ? '' :
-      '<p class="btn-row"><button class="btn btn-primary" id="s-save">Save</button></p>'}`;
+    <div class="head-row" style="margin-bottom:1.5rem;">
+      <div>
+        <h1>Settings</h1>
+        <p class="lede">Configure default runner parameters, global spending caps, storage cleanup, and workspace preferences.</p>
+      </div>
+    </div>
+    <div class="settings-layout">
+      <nav class="settings-nav" aria-label="Settings categories">
+        ${tabs}
+      </nav>
+      <div class="settings-content-wrapper">
+        <div id="settings-panel">${(panels[tab] || panels.general)()}</div>
+        ${tab === 'storage' || tab === 'about' ? '' :
+          '<p class="btn-row" style="margin-top:1.5rem;"><button class="btn btn-primary" id="s-save">Save changes</button></p>'}
+      </div>
+    </div>`;
 
-
-
-  /* The theme select and the toggle in the chrome were writing to different
-   * places — the select saved to the server while the page read localStorage,
-   * so choosing a theme here appeared to do nothing. The client's own display
-   * is the client's to own, so this applies immediately and persists where
-   * the toggle reads from. */
+  /* Theme select inside general settings tab */
   const themeSelect = $('#s-theme');
   if (themeSelect) {
     themeSelect.value = storedTheme();
@@ -1702,18 +2614,41 @@ async function viewSettings(tab = 'general') {
     });
   }
 
+  const densitySelect = $('#s-density');
+  if (densitySelect) {
+    densitySelect.addEventListener('change', () => {
+      applyDensity(densitySelect.value);
+    });
+  }
+
   if ($('#s-save')) {
     $('#s-save').addEventListener('click', async () => {
       const patch = {};
       app().querySelectorAll('[data-set]').forEach((el) => {
-        const raw = el.value.trim();
-        const value = el.type === 'number' ? (raw === '' ? null : Number(raw)) : raw;
+        let value;
+        if (el.type === 'checkbox') {
+          value = el.checked;
+        } else if (el.type === 'number') {
+          const raw = el.value.trim();
+          value = raw === '' ? null : Number(raw);
+        } else {
+          value = el.value.trim();
+        }
         const [head, tail] = el.dataset.set.split('.');
-        if (tail) { (patch[head] ||= { ...(state.settings[head] || {}) })[tail] = value; }
-        else { patch[head] = value; }
+        if (tail) {
+          (patch[head] ||= { ...(state.settings[head] || {}) })[tail] = value;
+        } else {
+          patch[head] = value;
+        }
       });
-      await api('/api/settings', { method: 'PUT', body: patch });
-      toast('Saved.');
+      try {
+        const updated = await api('/api/settings', { method: 'PUT', body: patch });
+        state.settings = updated;
+        if (updated.density) applyDensity(updated.density);
+        toast('Settings saved successfully.');
+      } catch (err) {
+        toast(`Error saving settings: ${err.message}`, 'error');
+      }
     });
   }
 
@@ -1730,54 +2665,290 @@ async function viewSettings(tab = 'general') {
       toast(removed ? `Permanently removed ${removed} deleted run(s).` : 'Nothing to reclaim.');
     });
   }
+
+  if ($('#s-reset')) {
+    $('#s-reset').addEventListener('click', async () => {
+      if (!confirm('Reset all user settings and limits to default values? Project configs will not be changed.')) return;
+      try {
+        const reset = await api('/api/settings/reset', { method: 'POST' });
+        state.settings = reset;
+        applyDensity(reset.density || 'comfortable');
+        toast('Settings restored to factory defaults.');
+        await viewSettings(tab);
+      } catch (err) {
+        toast(`Error resetting settings: ${err.message}`, 'error');
+      }
+    });
+  }
 }
 
 /* --------------------------------------------- view: models and scorers */
 
+function getModelTierInfo(m) {
+  const mid = (m.model || '').toLowerCase();
+  const name = (m.display || '').toLowerCase();
+  if (mid.includes('opus') || mid.includes('fable') || mid.includes('mythos')) {
+    return { label: 'Frontier', tier: 950, cls: 'tier-frontier' };
+  }
+  if (mid.includes('gpt-5') && !mid.includes('mini')) {
+    return { label: 'Frontier', tier: 940, cls: 'tier-frontier' };
+  }
+  if (mid.includes('o3') || mid.includes('o1')) {
+    return { label: 'Reasoning', tier: 930, cls: 'tier-frontier' };
+  }
+  if (mid.includes('sonnet') || mid.includes('claude-3-5')) {
+    return { label: 'Flagship', tier: 920, cls: 'tier-flagship' };
+  }
+  if (mid.includes('gemini-2.5-pro') || mid.includes('gemini-1.5-pro')) {
+    return { label: 'Flagship', tier: 910, cls: 'tier-flagship' };
+  }
+  if (mid.includes('gpt-4o') && !mid.includes('mini')) {
+    return { label: 'Flagship', tier: 900, cls: 'tier-flagship' };
+  }
+  if (mid.includes('gpt-4.1') && !mid.includes('mini')) {
+    return { label: 'Flagship', tier: 890, cls: 'tier-flagship' };
+  }
+  if (mid.includes('mistral-large')) {
+    return { label: 'Flagship', tier: 880, cls: 'tier-flagship' };
+  }
+  if (mid.includes('o4-mini')) {
+    return { label: 'Fast Reasoning', tier: 750, cls: 'tier-flagship' };
+  }
+  if (mid.includes('gpt-5-mini')) {
+    return { label: 'Efficiency', tier: 740, cls: '' };
+  }
+  if (mid.includes('gemini-2.5-flash')) {
+    return { label: 'Fast / Multimodal', tier: 730, cls: '' };
+  }
+  if (mid.includes('haiku')) {
+    return { label: 'Efficiency', tier: 720, cls: '' };
+  }
+  if (mid.includes('gpt-4.1-mini') || mid.includes('gpt-4o-mini')) {
+    return { label: 'Efficiency', tier: 710, cls: '' };
+  }
+  if (mid.includes('gemini-2.0-flash') || mid.includes('gemini-1.5-flash')) {
+    return { label: 'Fast', tier: 700, cls: '' };
+  }
+  if (mid.includes('mistral-small')) {
+    return { label: 'Efficiency', tier: 680, cls: '' };
+  }
+  if (mid.includes('local') || mid.includes('mock')) {
+    return { label: 'Local / Offline', tier: 100, cls: '' };
+  }
+  return { label: 'General', tier: 500, cls: '' };
+}
+
 async function viewModels() {
   crumbs({ label: 'Models' });
   const catalog = state.catalog || await api('/api/catalog');
-  const real = catalog.real_models || [];
-  const demo = catalog.demo_models || [];
+  const rawReal = catalog.real_models || [];
+  const rawDemo = catalog.demo_models || [];
+
+  // Sort real models: Active/Ready first, then Best model capability tier first
+  const real = [...rawReal].sort((a, b) => {
+    const aAvail = a.available ? 1 : 0;
+    const bAvail = b.available ? 1 : 0;
+    if (bAvail !== aAvail) return bAvail - aAvail;
+
+    const aTier = getModelTierInfo(a).tier;
+    const bTier = getModelTierInfo(b).tier;
+    if (bTier !== aTier) return bTier - aTier;
+
+    const aOut = Number(a.output_usd_per_mtok) || 0;
+    const bOut = Number(b.output_usd_per_mtok) || 0;
+    if (bOut !== aOut) return bOut - aOut;
+
+    const aCtx = Number(a.context_tokens) || 0;
+    const bCtx = Number(b.context_tokens) || 0;
+    if (bCtx !== aCtx) return bCtx - aCtx;
+
+    return (a.model || '').localeCompare(b.model || '');
+  });
+
+  // Sort demo models: Best accuracy first (Frontier 96% -> Balanced 88% -> Small 78% -> Tiny 55%)
+  const demo = [...rawDemo].sort((a, b) => {
+    return (b.params?.accuracy ?? 0) - (a.params?.accuracy ?? 0);
+  });
+
+  const readyReal = real.filter((m) => m.available);
+  const unavailableReal = real.filter((m) => !m.available);
+
+  const renderModelRow = (m) => {
+    const tier = getModelTierInfo(m);
+    return `
+      <tr data-provider="${esc(m.provider || '')}" data-available="${m.available ? 'true' : 'false'}" data-name="${esc(m.model)} ${esc(m.display || '')} ${esc(m.provider || '')}">
+        <td>
+          <div style="display:flex; align-items:center; gap:.5rem;">
+            <span class="dot ${m.available ? 'ok' : 'warn'}" title="${m.available ? 'Ready to call' : 'Requires API key'}"></span>
+            <div>
+              <code>${esc(m.model)}</code>
+              ${m.display ? `<br><span class="hint" style="font-size:.78rem">${esc(m.display)}</span>` : ''}
+            </div>
+          </div>
+        </td>
+        <td><span class="model-tier-pill ${tier.cls}">${tier.label}</span></td>
+        <td><span class="pill mute">${esc(m.provider || '—')}</span></td>
+        <td class="num">${m.input_usd_per_mtok != null ? '$' + Number(m.input_usd_per_mtok).toFixed(2) : '—'}</td>
+        <td class="num">${m.output_usd_per_mtok != null ? '$' + Number(m.output_usd_per_mtok).toFixed(2) : '—'}</td>
+        <td class="num">${m.context_tokens ? Number(m.context_tokens).toLocaleString() : '—'}</td>
+        <td>${m.available
+               ? '<span class="pill ok"><span class="dot ok"></span> ready</span>'
+               : `<span class="pill warn"><span class="dot warn"></span> set <code>${esc(m.api_key_env || 'a key')}</code></span>`}</td>
+      </tr>`;
+  };
 
   app().innerHTML = `
-    <h1>Models</h1>
-    <p class="lede">What the price catalog knows. A model with no sourced price gets no cost
-    metric rather than a guessed one — which is why one unpriced model removes the cost
-    column for the whole run.</p>
+    <div class="head-row">
+      <div>
+        <h1>Models</h1>
+        <p class="lede">What the price catalog knows. A model with no sourced price gets no cost
+        metric rather than a guessed one — which is why one unpriced model removes the cost
+        column for the whole run.</p>
+      </div>
+    </div>
 
-    <h2>Real models</h2>
-    ${real.length ? `
-      <div class="grid-scroll"><table class="data">
-        <thead><tr><th>model</th><th>provider</th><th class="num">in $/Mtok</th>
-          <th class="num">out $/Mtok</th><th class="num">context</th><th>credential</th></tr></thead>
-        <tbody>${real.map((m) => `
-          <tr>
-            <td><code>${esc(m.model)}</code>${m.display ? `<br><span class="hint">${esc(m.display)}</span>` : ''}</td>
-            <td>${esc(m.provider || '—')}</td>
-            <td class="num">${m.input_usd_per_mtok ?? '—'}</td>
-            <td class="num">${m.output_usd_per_mtok ?? '—'}</td>
-            <td class="num">${m.context_tokens ? Number(m.context_tokens).toLocaleString() : '—'}</td>
-            <td>${m.available
-                   ? '<span class="pill ok">ready</span>'
-                   : `<span class="pill warn">set ${esc(m.api_key_env || 'a key')}</span>`}</td>
-          </tr>`).join('')}</tbody>
-      </table></div>` : '<p class="hint">No catalog entries returned.</p>'}
+    <div class="model-stat-grid">
+      <div class="model-stat-card">
+        <span class="stat-label"><span class="dot ok"></span> Ready to Call</span>
+        <span class="stat-val good">${readyReal.length}</span>
+        <span class="stat-desc">Credentials present in environment</span>
+      </div>
+      <div class="model-stat-card">
+        <span class="stat-label"><span class="dot warn"></span> Requires API Key</span>
+        <span class="stat-val warn">${unavailableReal.length}</span>
+        <span class="stat-desc">Set environment variable to unlock</span>
+      </div>
+      <div class="model-stat-card">
+        <span class="stat-label"><span class="dot busy"></span> Simulated Models</span>
+        <span class="stat-val">${demo.length}</span>
+        <span class="stat-desc">Zero-cost baseline mocks</span>
+      </div>
+    </div>
 
-    <h2>Simulated models</h2>
-    <p class="hint">Deterministic and free. Use these to prove your scorers and weights
-    behave before spending anything on a real provider.</p>
-    ${demo.length ? `
-      <div class="grid-scroll"><table class="data">
-        <thead><tr><th>key</th><th>what it stands in for</th><th class="num">accuracy</th><th class="num">latency</th></tr></thead>
-        <tbody>${demo.map((m) => `
-          <tr>
-            <td><code>${esc(m.model)}</code></td>
-            <td>${esc(m.blurb || m.label || '')}</td>
-            <td class="num">${m.params?.accuracy != null ? m.params.accuracy + '%' : '—'}</td>
-            <td class="num">${m.params?.latency_ms != null ? m.params.latency_ms + 'ms' : '—'}</td>
-          </tr>`).join('')}</tbody>
-      </table></div>` : ''}`;
+    <div class="model-toolbar">
+      <div class="model-filter-chips" id="model-filter-chips">
+        <button class="filter-chip active" data-filter="all">All (${real.length})</button>
+        <button class="filter-chip" data-filter="ready"><span class="dot ok" style="width:7px;height:7px;margin-right:4px;"></span>Ready (${readyReal.length})</button>
+        <button class="filter-chip" data-filter="needs_key"><span class="dot warn" style="width:7px;height:7px;margin-right:4px;"></span>Needs Key (${unavailableReal.length})</button>
+        <button class="filter-chip" data-filter="anthropic">Anthropic</button>
+        <button class="filter-chip" data-filter="openai">OpenAI</button>
+        <button class="filter-chip" data-filter="gemini">Gemini</button>
+        <button class="filter-chip" data-filter="mistral">Mistral</button>
+      </div>
+      <div class="model-search-box">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:.6"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="search" id="model-search" placeholder="Filter models by name or provider..." autocomplete="off">
+      </div>
+    </div>
+
+    <div class="models-section" data-section="ready">
+      <h2 style="display:flex; align-items:center; gap:.5rem;"><span class="dot ok"></span> Available & Ready Models (${readyReal.length})</h2>
+      <p class="hint" style="margin-top:-.5rem; margin-bottom:.75rem;">
+        Models with active credentials detected on this machine. Ready to run sweeps immediately, ordered with <strong>highest capability frontier models first</strong>.
+      </p>
+
+      ${readyReal.length ? `
+        <div class="grid-scroll"><table class="data">
+          <thead><tr>
+            <th>model</th>
+            <th>tier</th>
+            <th>provider</th>
+            <th class="num">in $/Mtok</th>
+            <th class="num">out $/Mtok</th>
+            <th class="num">context</th>
+            <th>credential / status</th>
+          </tr></thead>
+          <tbody>${readyReal.map(renderModelRow).join('')}</tbody>
+        </table></div>` : '<p class="hint">No ready models detected. Set API keys in your environment to unlock provider models.</p>'}
+    </div>
+
+    <div class="models-section" data-section="unavailable" style="margin-top:2.5rem;">
+      <h2 style="display:flex; align-items:center; gap:.5rem;"><span class="dot warn"></span> Models Requiring API Keys (${unavailableReal.length})</h2>
+      <p class="hint" style="margin-top:-.5rem; margin-bottom:.75rem;">
+        These models are cataloged with verified list pricing. Export the corresponding environment variable to enable them.
+      </p>
+
+      ${unavailableReal.length ? `
+        <div class="grid-scroll"><table class="data">
+          <thead><tr>
+            <th>model</th>
+            <th>tier</th>
+            <th>provider</th>
+            <th class="num">in $/Mtok</th>
+            <th class="num">out $/Mtok</th>
+            <th class="num">context</th>
+            <th>credential / status</th>
+          </tr></thead>
+          <tbody>${unavailableReal.map(renderModelRow).join('')}</tbody>
+        </table></div>` : ''}
+    </div>
+
+    <div class="models-section" data-section="demo" style="margin-top:2.5rem;">
+      <h2 style="display:flex; align-items:center; gap:.5rem;"><span class="dot ok"></span> Free Simulated Models (${demo.length})</h2>
+      <p class="hint" style="margin-top:-.5rem; margin-bottom:.75rem;">
+        Deterministic and zero-cost, ordered by <strong>best simulated accuracy</strong> first. Use these to verify scorers before spending on live providers.
+      </p>
+      ${demo.length ? `
+        <div class="grid-scroll"><table class="data">
+          <thead><tr><th>key</th><th>what it stands in for</th><th class="num">accuracy</th><th class="num">latency</th><th class="num">sim in/out $/Mtok</th></tr></thead>
+          <tbody>${demo.map((m) => `
+            <tr data-provider="mock" data-available="true" data-name="${esc(m.model)} ${esc(m.label || '')}">
+              <td>
+                <div style="display:flex; align-items:center; gap:.5rem;">
+                  <span class="dot ok" title="Ready (Free)"></span>
+                  <code>${esc(m.model)}</code>
+                </div>
+              </td>
+              <td><strong>${esc(m.label || '')}</strong><br><span class="hint">${esc(m.blurb || '')}</span></td>
+              <td class="num"><span class="pill ok" style="font-family:var(--mono); font-weight:700;">${m.params?.accuracy != null ? m.params.accuracy + '%' : '—'}</span></td>
+              <td class="num">${m.params?.latency_ms != null ? m.params.latency_ms + 'ms' : '—'}</td>
+              <td class="num">${m.card?.input_usd_per_mtok != null ? '$' + m.card.input_usd_per_mtok + ' / $' + m.card.output_usd_per_mtok : '—'}</td>
+            </tr>`).join('')}</tbody>
+        </table></div>` : ''}
+    </div>`;
+
+  // Interactive Live Filter & Search across all tables
+  let activeFilter = 'all';
+  const searchInput = document.getElementById('model-search');
+  const chipContainer = document.getElementById('model-filter-chips');
+
+  function applyFilter() {
+    const query = (searchInput?.value || '').trim().toLowerCase();
+    const rows = document.querySelectorAll('.models-section tbody tr');
+    rows.forEach((row) => {
+      const provider = (row.getAttribute('data-provider') || '').toLowerCase();
+      const available = row.getAttribute('data-available') === 'true';
+      const text = (row.getAttribute('data-name') || '').toLowerCase();
+
+      let matchesFilter = true;
+      if (activeFilter === 'ready') matchesFilter = available;
+      else if (activeFilter === 'needs_key') matchesFilter = !available;
+      else if (activeFilter !== 'all') matchesFilter = provider.includes(activeFilter);
+
+      const matchesSearch = !query || text.includes(query) || provider.includes(query);
+      row.style.display = (matchesFilter && matchesSearch) ? '' : 'none';
+    });
+
+    document.querySelectorAll('.models-section').forEach((sec) => {
+      const visibleRows = sec.querySelectorAll('tbody tr:not([style*="display: none"])');
+      sec.style.display = visibleRows.length ? '' : 'none';
+    });
+  }
+
+  if (chipContainer) {
+    chipContainer.addEventListener('click', (e) => {
+      const btn = e.target.closest('.filter-chip');
+      if (!btn) return;
+      chipContainer.querySelectorAll('.filter-chip').forEach((c) => c.classList.remove('active'));
+      btn.classList.add('active');
+      activeFilter = btn.getAttribute('data-filter') || 'all';
+      applyFilter();
+    });
+  }
+
+  if (searchInput) {
+    searchInput.addEventListener('input', applyFilter);
+  }
 }
 
 async function viewScorers() {
@@ -1785,61 +2956,130 @@ async function viewScorers() {
   const catalog = state.catalog || await api('/api/catalog');
   const scorers = catalog.scorers || [];
 
-  /* What the catalog cannot tell you: what a reference for this type should
-   * look like, and how it fails. That is the part people get wrong, so it
-   * belongs on the page rather than only in the docs. */
   const GUIDE = {
-    classification: { ref: 'billing', use: 'One of a fixed set of labels.',
-      fails: 'Two labels where one contains the other, or a model that names a label while rejecting it.' },
-    exact_match: { ref: 'refund issued', use: 'A short deterministic string.',
-      fails: 'The model adds a preamble. Strip it in a hook, or use contains.' },
-    contains: { ref: '["order id", "refund"]', use: 'The answer must mention certain things.',
-      fails: 'Cannot tell a mention from a negation — "does not include a refund" still matches.' },
-    regex: { ref: '^ORD-\\d{6}$', use: 'A structured value: an id, a date, a code.',
-      fails: 'Anchored too tightly. Models vary the text around the value far more than the value.' },
-    numeric: { ref: '42.5', use: 'A number, compared with a tolerance.',
-      fails: 'Several numbers in the output and the wanted one is not first.' },
-    json_match: { ref: '{"total": 12.5, "currency": "USD"}', use: 'Structured extraction. Scores partial credit per key.',
-      fails: 'The model wraps JSON in a markdown fence — strip it in post_process.' },
-    semantic: { ref: 'the customer was charged twice', use: 'Free text where wording varies but meaning should not.',
-      fails: 'The builtin is lexical, so it rewards shared vocabulary rather than shared meaning.' },
-    code_exec: { ref: 'assert solve([1,2]) == 3', use: 'Generated code, run against your assertions.',
-      fails: 'Process isolation, not a sandbox. Do not point it at an untrusted model.' },
-    llm_judge: { ref: 'a rubric describing a good answer', use: 'Qualities no deterministic scorer can express.',
-      fails: 'Costs a second call per case, and makes your ranking depend on another model.' },
-    manual: { ref: '(none)', use: 'Collect outputs now, grade them by hand, then automate.',
-      fails: 'Always scores 0.5, so it never ranks anything on its own.' },
+    classification: {
+      ref: 'billing',
+      use: 'One of a fixed set of predefined category labels.',
+      fails: 'Two labels where one contains the other, or a model that outputs verbose reasoning instead of a bare label.',
+      exec: 'Native Stdlib (0ms)',
+      scoring: 'Strict label match (0 or 1)',
+    },
+    exact_match: {
+      ref: 'refund issued',
+      use: 'Short deterministic string with strict equality check.',
+      fails: 'The model adds a polite preamble or punctuation. Strip it in a hook, or use contains.',
+      exec: 'Native Stdlib (0ms)',
+      scoring: 'Exact binary match (0 or 1)',
+    },
+    contains: {
+      ref: '["order id", "refund"]',
+      use: 'The answer must mention essential keywords or substrings.',
+      fails: 'Cannot distinguish an assertion from a negation (e.g., "does not include a refund" still passes).',
+      exec: 'Native Stdlib (0ms)',
+      scoring: 'Keyword substring matching',
+    },
+    regex: {
+      ref: '^ORD-\\d{6}$',
+      use: 'Structured pattern extraction: ticket IDs, dates, codes, SKUs.',
+      fails: 'Anchored too tightly. Models vary the text around the token far more than the pattern itself.',
+      exec: 'Python re engine',
+      scoring: 'Regex expression match',
+    },
+    numeric: {
+      ref: '42.5 ± 0.05',
+      use: 'Numbers, percentages, financial calculations with relative tolerance.',
+      fails: 'Multiple numbers in output and the target quantity is not parsed first.',
+      exec: 'Float parser & epsilon diff',
+      scoring: 'Value tolerance interval',
+    },
+    json_match: {
+      ref: '{"total": 12.5, "currency": "USD"}',
+      use: 'Structured JSON objects. Grants partial credit per matching key.',
+      fails: 'The model wraps JSON in markdown fences (```json...```) — strip in post_process.',
+      exec: 'JSON parser & key comparator',
+      scoring: 'Partial credit per valid key (0.0 – 1.0)',
+    },
+    semantic: {
+      ref: 'the customer was charged twice',
+      use: 'Natural language where phrasing varies but underlying meaning must match.',
+      fails: 'Lexical similarity can reward shared keywords rather than true semantic equivalence.',
+      exec: 'Token similarity algorithm',
+      scoring: 'Cosine / token overlap similarity',
+    },
+    code_exec: {
+      ref: 'assert solve([1,2]) == 3',
+      use: 'Generated Python code, executed against unit test assertions.',
+      fails: 'Runs in local subprocess isolation (not an unmetered sandbox). Do not use with untrusted code.',
+      exec: 'Subprocess runner with timeout',
+      scoring: 'Assertion pass rate (0.0 – 1.0)',
+    },
+    llm_judge: {
+      ref: 'Rubric with evaluation criteria',
+      use: 'Nuanced quality, tone, style, or adherence to complex guidelines.',
+      fails: 'Incurs additional API latency & cost per test case, and couples evaluation to judge reliability.',
+      exec: 'LLM API Call ($ + latency)',
+      scoring: 'Graded rubric (0.0 – 1.0)',
+    },
+    manual: {
+      ref: 'Human inspection queue',
+      use: 'Collect real model outputs for human grading before automating with heuristics.',
+      fails: 'Always assigns fixed score (0.5) to avoid biasing unreviewed sweeps.',
+      exec: 'Interactive review queue',
+      scoring: 'Human reviewer score',
+    },
   };
 
   app().innerHTML = `
-    <h1>Scorers</h1>
-    <p class="lede">How an answer is graded. Pick the one that matches the shape of a correct
-    answer, not the one that sounds most sophisticated — a wrong scorer makes every model
-    look equally bad.</p>
+    <div class="head-row">
+      <div>
+        <h1>Evaluation Scorers</h1>
+        <p class="lede">How model responses are graded. Choose the evaluation method that matches the exact shape of your expected outputs — wrong scorers produce misleading rankings.</p>
+      </div>
+      <div>
+        <span class="badge-tag"><strong>${scorers.length}</strong> available scorers</span>
+      </div>
+    </div>
 
-    <div class="grid">${scorers.map((sc) => {
+    <div class="scorer-grid">${scorers.map((sc) => {
       const name = sc.name || String(sc);
       const guide = GUIDE[name] || {};
       return `
-        <div class="card project-card">
-          <div class="head-row">
-            <p class="card-title"><code>${esc(name)}</code></p>
-            <span class="pill mute">${esc(sc.source || 'builtin')}</span>
+        <div class="scorer-card">
+          <div class="scorer-card-head">
+            <code>${esc(name)}</code>
+            <span class="pill ${sc.source === 'builtin' ? 'mute' : 'ok'}">${esc(sc.source || 'builtin')}</span>
           </div>
-          <p class="hint mb0">${esc(sc.description || '')}</p>
-          ${guide.use ? `<p class="small" style="margin:.6rem 0 .2rem"><strong>Reach for it when</strong><br>${esc(guide.use)}</p>` : ''}
-          ${guide.ref ? `<p class="small mb0"><strong>A reference looks like</strong><br>
-            <code class="model-id">${esc(guide.ref)}</code></p>` : ''}
-          ${guide.fails ? `<p class="small" style="margin-top:.5rem"><span class="warn">${icon('x', { size: 13 })}</span>
-            <strong>Where it breaks</strong><br>${esc(guide.fails)}</p>` : ''}
+
+          <p class="scorer-card-desc">${esc(sc.description || guide.use || '')}</p>
+
+          <div class="scorer-box-section">
+            <span class="scorer-box-label">Best Used For</span>
+            <div class="scorer-box-value">${esc(guide.use || 'Deterministic comparison')}</div>
+          </div>
+
+          <div class="scorer-box-section">
+            <span class="scorer-box-label">Expected Reference Format</span>
+            <div class="scorer-ref-box"><code>${esc(guide.ref || '—')}</code></div>
+          </div>
+
+          <div class="scorer-hover-details">
+            <div class="scorer-pitfall">
+              <strong><span>⚠️</span> Where it breaks / Caveat</strong>
+              ${esc(guide.fails || 'Ensure proper input format.')}
+            </div>
+            <div class="scorer-meta-row">
+              <span>⚡ ${esc(guide.exec || 'Stdlib')}</span>
+              <span>🎯 ${esc(guide.scoring || 'Score: 0.0 - 1.0')}</span>
+            </div>
+          </div>
         </div>`;
     }).join('')}</div>
 
-    <div class="callout" style="margin-top:1.25rem">
-      <p class="mb0"><strong>None of these fit?</strong> Drop a Python file in your project's
-      <code>scorers/</code> folder and it is picked up automatically — no registration, no plugin
-      manifest. It can also emit its own metrics, which then become weightable dimensions on the
-      leaderboard by name.</p>
+    <div class="callout" style="margin-top:1.75rem">
+      <div class="callout-title">Custom Project Scorers</div>
+      <p class="mb0"><strong>Need custom grading logic?</strong> Drop any <code>.py</code> file in your project's
+      <code>scorers/</code> directory and Agent Arena detects it automatically with zero registration boilerplate.
+      Custom scorers can emit domain-specific metrics that instantly appear on the evaluation leaderboard.</p>
     </div>`;
 }
 
@@ -1863,6 +3103,14 @@ function applyTheme(theme) {
 
 function storedTheme() {
   try { return localStorage.getItem('arena-theme') || 'system'; } catch { return 'system'; }
+}
+
+function applyDensity(density) {
+  if (density === 'compact') {
+    document.documentElement.setAttribute('data-density', 'compact');
+  } else {
+    document.documentElement.removeAttribute('data-density');
+  }
 }
 
 window.addEventListener('hashchange', router);
@@ -1902,8 +3150,15 @@ document.addEventListener('keydown', (event) => {
   }, true);
 
   try {
-    state.catalog = await api('/api/catalog');
-
+    const [catalog, settings] = await Promise.all([
+      api('/api/catalog'),
+      api('/api/settings').catch(() => null),
+    ]);
+    state.catalog = catalog;
+    if (settings) {
+      state.settings = settings;
+      applyDensity(settings.density);
+    }
   } catch (error) {
     app().innerHTML = `<div class="card"><h2>Cannot reach the server</h2><p>${esc(error.message)}</p></div>`;
     return;

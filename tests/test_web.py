@@ -11,6 +11,7 @@ Two things are worth testing here and nothing else is:
 from __future__ import annotations
 
 import json
+import re
 import threading
 import time
 from http.client import HTTPConnection
@@ -423,3 +424,66 @@ def _request(address, method, path, raw=None, headers=None):
         return response.status, dict(response.getheaders()), response.read()
     finally:
         connection.close()
+
+
+STATIC = Path(__file__).resolve().parents[1] / "agent_arena" / "web" / "static"
+
+
+class ClientAssetContractTests:
+    """Two bugs the Python suite could not see, because they lived in the
+    static assets: a route table that could not match the links the app itself
+    generated, and a CSS class defined twice with incompatible layouts.
+
+    There is no JS runtime here on purpose — invariant 1 keeps the UI free of
+    dependencies — so these read the assets as text and check the contracts
+    that actually broke.
+    """
+
+    @staticmethod
+    def _routes() -> list[re.Pattern[str]]:
+        """The route table from app.js, as Python regexes."""
+        js = (STATIC / "app.js").read_text()
+        block = js[js.index("const routes = ["):]
+        block = block[: block.index("\n];")]
+        return [re.compile(pattern) for pattern in re.findall(r"\[/(\^.*?\$)/,", block)]
+
+    def test_every_link_the_app_builds_matches_a_route(self):
+        """A generated `#/...` href that no route matches is a dead link: the
+        router falls through to `#/` and the user silently lands on Overview.
+        That is how `#/p/<name>/results?run=<id>` broke — the query string was
+        matched as part of the path, and no anchored pattern could ever match.
+        """
+        js = (STATIC / "app.js").read_text()
+        routes = self._routes()
+        assert routes, "no routes parsed out of app.js"
+
+        dead = []
+        for href in set(re.findall(r'href="(#/[^"]*)"', js)):
+            path = href[1:].split("?", 1)[0]          # drop '#' and any query
+            path = re.sub(r"\$\{[^{}]*\}", "sample", path)
+            if "${" in path or "`" in path:
+                continue                              # too dynamic to resolve here
+            if not any(r.match(path) for r in routes):
+                dead.append(href)
+        assert not dead, f"links no route can match: {sorted(dead)}"
+
+    def test_the_router_separates_the_query_string_from_the_path(self):
+        js = (STATIC / "app.js").read_text()
+        router = js[js.index("async function router()"):]
+        router = router[: router.index("\n}")]
+        assert "indexOf('?')" in router, "router must split the query off the hash"
+        assert "URLSearchParams" in router, "parsed query must reach the view"
+
+    def test_no_css_class_is_defined_with_two_different_display_modes(self):
+        """`.stat-row` was declared once as a grid and again as a flex column.
+        The later rule won, and every dashboard's four-up KPI cards collapsed
+        into a single stacked column at full width.
+        """
+        css = (STATIC / "app.css").read_text()
+        displays: dict[str, set[str]] = {}
+        for selector, body in re.findall(r"^(\.[a-z0-9-]+)\s*\{([^}]*)\}", css, re.M):
+            found = re.search(r"\bdisplay:\s*([a-z-]+)", body)
+            if found:
+                displays.setdefault(selector, set()).add(found.group(1))
+        clashing = {sel: sorted(v) for sel, v in displays.items() if len(v) > 1}
+        assert not clashing, f"same class, conflicting display: {clashing}"

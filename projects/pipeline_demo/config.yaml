@@ -1,6 +1,6 @@
-# Example project 3 of 3 — comparing ARCHITECTURES rather than models.
+# Example project 4 — comparing ARCHITECTURES rather than models.
 #
-# The other two example projects hold the architecture fixed and vary the model.
+# The model-vs-model examples hold the architecture fixed and vary the model.
 # This one does the opposite: one deterministic "model", three ways of wiring
 # agents together. It is the multi-agent study's question asked in the arena's
 # terms, so the answer comes back as a ranked, costed, disqualifying leaderboard

@@ -206,7 +206,8 @@ The arena inverts that. It knows nothing about any task:
 | `projects/doc_extraction/` | Example 2 — structured JSON extraction, offline |
 | `projects/local_demo/` | Example 3 — models on your own machine |
 | `projects/pipeline_demo/` | Example 4 — comparing multi-agent architectures, offline |
-| `tests/` | 709 tests covering the engine, service layer, targets and the UI |
+| `projects/coding_models/` | Example 5 — which model should write code for your repo |
+| `tests/` | 715 tests covering the engine, service layer, targets and the UI |
 
 ## How to use it
 
@@ -236,21 +237,35 @@ sentences rather than scores:
 > **Cannot use: Tiny (simulated).** It only gets 50 out of 100 right, which is
 > below the floor you set.
 
-Three things it does that the CLI does not:
+It is a multi-page app behind a sidenav — Overview, Projects, Runs, Models,
+Scorers, Providers and Settings — and these are the parts worth knowing:
 
-- **A wizard instead of a config file** — pick the kind of job from seven plain
-  descriptions ("sort things into categories", "pull specific details out of
-  text"), and the right scorer, prompt and starting weights are chosen for you.
+- **A wizard instead of a config file** — pick the kind of job from eight plain
+  descriptions ("sort things into categories", "write or fix code"), and the
+  right scorer, prompt and starting weights are chosen for you. Every job type
+  carries a worked example behind a *Show me one* button, because nobody writes
+  a good test case staring at an empty box.
 - **What-if sliders** — change how much you care about accuracy, cost or speed
   and the ranking is recalculated *from the answers already collected*. No new
   API calls, no new spend. It runs the real `build_leaderboard`, so a what-if
   and a fresh run can never disagree.
 - **Plain-English disqualifications** — the reason a model was ruled out, plus
   whether the fix is a better model or a more realistic requirement.
+- **A per-case grid** — every case against every model, so you can see *where*
+  they disagree. A case they all get right carries no information about which
+  to pick.
+- **Providers** — save, edit and delete connection profiles, check each one is
+  reachable, and list what it serves. A local runtime is detected and can be
+  started from the page; a green dot means reachable, red means not, and the
+  reason is on hover.
+- **Delete that shows its work** — anything destructive asks the server what it
+  would remove, prints exactly that, and requires the name typed before
+  anything irreversible.
 
-It is stdlib-only like the engine (no Flask, no npm, no CDN), binds to localhost,
-and works offline. `arena ui --projects-dir path/to/projects --port 8421` if you
-keep projects elsewhere.
+Light by default, dark on a toggle. It is stdlib-only like the engine (no
+Flask, no npm, no CDN, no build step), binds to localhost, and works offline.
+`arena ui --projects-dir path/to/projects --port 8421` if you keep projects
+elsewhere.
 
 ### Comparing pipelines, not just models
 
@@ -291,6 +306,30 @@ needed by the last. The rigid handoff has no field for it and loses it every
 time. The free-text summary keeps it when prominent and drops it when buried,
 which is the intermittent failure that reads like a prompt problem for weeks.
 That is the multi-agent study's finding, now ranked, priced, and gated on.
+
+### Picking a model for your own codebase
+
+A common first question: *which model should write code for my repo?*
+`projects/coding_models/` is a template for exactly that — the cases are
+coding tasks and the scorer runs the generated code against your assertions,
+so a model is judged on whether its code actually works rather than on whether
+it reads well.
+
+```bash
+arena validate --project projects/coding_models     # works with no key
+arena evaluate --project projects/coding_models --dry-run
+```
+
+Uncomment the candidates you have keys for, then replace the sample tasks with
+real ones from your own repo. That last step is the point: a public benchmark
+cannot tell you which model is good at *your* code, and six tasks that look
+like your work will tell you more than a thousand that do not.
+
+It is the one example here that deliberately does **not** run offline, and it
+says so at the top of the file. A `mock:` model returns the reference, and for
+a coding task the reference is the *assertions* rather than an implementation —
+so a simulated candidate scores 0% however good it is pretending to be. Code is
+the one job you cannot fake a candidate for.
 
 ### Your own project
 
@@ -509,7 +548,7 @@ agent_arena/service/            project/run lifecycle,      │
                                  secrets, providers, export  │
 agent_arena/web/                the browser UI (`arena ui`) ├─ Universal Arena
 projects/                       example + your projects     │
-tests/                          709 engine + UI tests       │
+tests/                          715 engine + UI tests       │
 demo/  demo.md                  local-model walkthrough    ─┘
 .github/actions/agent-arena-eval/  the published GitHub Action
 
@@ -560,7 +599,7 @@ Before you push:
 
 ```bash
 pip install -e ".[dev]"
-pytest -q                                                 # 709 tests, offline, ~38s
+pytest -q                                                 # 715 tests, offline, ~44s
 arena validate --project projects/support_triage
 arena evaluate --project projects/support_triage --quiet --no-report
 ```

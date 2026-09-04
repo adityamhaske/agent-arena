@@ -287,9 +287,11 @@ class ArenaAPI:
 
     def catalog(self) -> dict[str, Any]:
         """Everything the wizard needs to render itself, in one request."""
+        from .. import __version__  # noqa: PLC0415
         price_book = build_price_book(None)
         registry = ScorerRegistry()
         return {
+            "version": __version__,
             "presets": lang.JOB_PRESETS,
             "metric_language": lang.METRIC_LANGUAGE,
             "weightable_metrics": sorted(BUILTIN_METRICS),
@@ -300,7 +302,8 @@ class ArenaAPI:
         }
 
     def _real_models(self, price_book: Any) -> list[dict[str, Any]]:
-        """The priced catalog, annotated with whether this machine can call it."""
+        """The priced catalog, annotated with whether this machine can call it,
+        sorted with ready/active models first and highest capability models first."""
         models = []
         for model_id in price_book.known_models():
             card = price_book.get(model_id)
@@ -319,6 +322,59 @@ class ArenaAPI:
                     "available": _key_present(env),
                 }
             )
+
+        def _sort_key(m: dict[str, Any]) -> tuple[int, int, float, int, str]:
+            mid = (m.get("model") or "").lower()
+            name = (m.get("display") or "").lower()
+            tier = 500
+            if any(k in mid or k in name for k in ("opus", "fable", "mythos")):
+                tier = 950
+            elif "gpt-5" in mid and "mini" not in mid:
+                tier = 940
+            elif "o3" in mid or "o1" in mid:
+                tier = 930
+            elif "sonnet" in mid or "claude-3-5" in mid:
+                tier = 920
+            elif "gemini-2.5-pro" in mid or "gemini-1.5-pro" in mid:
+                tier = 910
+            elif "gpt-4o" in mid and "mini" not in mid:
+                tier = 900
+            elif "gpt-4.1" in mid and "mini" not in mid:
+                tier = 890
+            elif "mistral-large" in mid:
+                tier = 880
+            elif "o4-mini" in mid:
+                tier = 750
+            elif "gpt-5-mini" in mid:
+                tier = 740
+            elif "gemini-2.5-flash" in mid:
+                tier = 730
+            elif "haiku" in mid:
+                tier = 720
+            elif "gpt-4.1-mini" in mid or "gpt-4o-mini" in mid:
+                tier = 710
+            elif "gemini-2.0-flash" in mid or "gemini-1.5-flash" in mid:
+                tier = 700
+            elif "mistral-small" in mid:
+                tier = 680
+            elif "local" in mid or "mock" in mid:
+                tier = 100
+
+            if "-5" in mid:
+                tier += 15
+            elif "-4-8" in mid:
+                tier += 10
+            elif "-4-7" in mid:
+                tier += 8
+            elif "-4-6" in mid:
+                tier += 6
+
+            avail_order = 0 if m.get("available") else 1
+            out_price = float(m.get("output_usd_per_mtok") or 0.0)
+            ctx = int(m.get("context_tokens") or 0)
+            return (avail_order, -tier, -out_price, -ctx, m.get("model", ""))
+
+        models.sort(key=_sort_key)
         return models
 
     # ---- projects ------------------------------------------------------
@@ -713,6 +769,35 @@ class ArenaAPI:
         from ..service import settings as svc  # noqa: PLC0415
 
         return svc.save(body)
+
+    def reset_settings(self) -> dict[str, Any]:
+        from ..service import settings as svc  # noqa: PLC0415
+
+        return svc.reset()
+
+    def about(self) -> dict[str, Any]:
+        """System environment, engine specs, and version metadata."""
+        import platform
+        import sys
+        from .. import __version__  # noqa: PLC0415
+
+        price_book = build_price_book(None)
+        registry = ScorerRegistry()
+        return {
+            "version": __version__,
+            "release_channel": "Release Candidate (v2.0.0rc1)",
+            "license": "MIT",
+            "author": "Aditya Mhaske",
+            "python": sys.version.split()[0],
+            "platform": platform.platform(),
+            "yaml": yaml_available(),
+            "scorers_count": len(registry.describe()),
+            "models_count": len(price_book.known_models()),
+            "pricing_as_of": getattr(price_book, "as_of", "2026-09-02"),
+            "storage_engine": "SQLite 3 (WAL mode, local zero-network store)",
+            "docs_url": "https://adityamhaske.github.io/agent-arena",
+            "repo_url": "https://github.com/adityamhaske/agent-arena",
+        }
 
     def job_status(self, job_id: str) -> dict[str, Any]:
         return self.jobs.get(job_id).snapshot()
