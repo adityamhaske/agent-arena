@@ -105,29 +105,77 @@ const routes = [
   [/^\/p\/([a-z0-9_-]+)\/cases\/([^/]+)$/, viewRunCases],
 ];
 
+/* Icons are inline SVG rather than a font or a sprite sheet: no network, no
+ * build step, and they inherit currentColor so they work in both themes
+ * without a second asset. 16px on a 24 grid, 2px stroke, round caps — one
+ * geometry for the whole set so they sit together. */
+const ICONS = {
+  overview:  'M3 12h6v9H3zM10.5 3h3v18h-3zM15 8h6v13h-6z',
+  projects:  'M4 5h7l2 2h7v12H4zM4 10h16',
+  runs:      'M4 7h16M4 12h16M4 17h10',
+  models:    'M12 3l8 4.5v9L12 21l-8-4.5v-9zM12 12l8-4.5M12 12v9M12 12L4 7.5',
+  scorers:   'M20 6L9 17l-5-5',
+  providers: 'M4 8h11l-3-3M20 16H9l3 3',
+  settings:  'M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-2.9 1.2v.2a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.6 1.7 1.7 0 00-1.9.4l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00-1.2-2.9h-.2a2 2 0 110-4h.1a1.7 1.7 0 001.6-1.1 1.7 1.7 0 00-.4-1.9l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.9.3h.1A1.7 1.7 0 0010 3.5v-.2a2 2 0 114 0v.1a1.7 1.7 0 001 1.6 1.7 1.7 0 001.9-.4l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.9v.1a1.7 1.7 0 001.6 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z',
+  menu:      'M4 7h16M4 12h16M4 17h16',
+  sun:       'M12 17a5 5 0 100-10 5 5 0 000 10zM12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4',
+  moon:      'M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z',
+  play:      'M6 4l14 8-14 8z',
+  refresh:   'M21 12a9 9 0 11-2.6-6.4M21 3v6h-6',
+  plug:      'M9 3v6M15 3v6M6 9h12v3a6 6 0 01-12 0zM12 18v3',
+  trash:     'M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13',
+  edit:      'M4 20h4L20 8l-4-4L4 16z',
+  external:  'M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 01-1 1H6a1 1 0 01-1-1V8a1 1 0 011-1h5',
+  check:     'M20 6L9 17l-5-5',
+  x:         'M6 6l12 12M18 6L6 18',
+};
+
+/** An inline SVG icon. `title` becomes a tooltip — the explanation that lets
+ *  an icon replace a word rather than just hide one. */
+function icon(name, { size = 16, title = '' } = {}) {
+  const path = ICONS[name];
+  if (!path) return '';
+  return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none"
+    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+    ${title ? 'role="img"' : 'aria-hidden="true"'}>${title ? `<title>${esc(title)}</title>` : ''}
+    <path d="${path}"/></svg>`;
+}
+
+/** A status dot. The colour is the signal, the title is the reason. */
+function dot(kind, title) {
+  return `<span class="dot ${kind}" title="${esc(title)}" role="img" aria-label="${esc(title)}"></span>`;
+}
+
 /* The sidenav. `match` decides which entry is highlighted for a given hash —
  * a prefix test rather than equality, so /p/foo/results still lights up
  * "Projects" instead of leaving the user with no sense of where they are. */
 const NAV = [
   { group: 'Evaluate' },
-  { href: '#/', icon: '◎', label: 'Overview', match: (p) => p === '/' },
-  { href: '#/projects', icon: '▤', label: 'Projects', match: (p) => p === '/projects' || p.startsWith('/p/') },
-  { href: '#/runs', icon: '≡', label: 'Runs', match: (p) => p === '/runs' },
+  { href: '#/', icon: 'overview', label: 'Overview', match: (p) => p === '/' },
+  { href: '#/projects', icon: 'projects', label: 'Projects', match: (p) => p === '/projects' || p.startsWith('/p/') },
+  { href: '#/runs', icon: 'runs', label: 'Runs', match: (p) => p === '/runs' },
   { group: 'Reference' },
-  { href: '#/models', icon: '◈', label: 'Models', match: (p) => p === '/models' },
-  { href: '#/scorers', icon: '✓', label: 'Scorers', match: (p) => p === '/scorers' },
-  { href: '#/providers', icon: '⇄', label: 'Providers', match: (p) => p === '/providers' },
-  { group: 'Configure' },
-  { href: '#/settings', icon: '⚙', label: 'Settings', match: (p) => p.startsWith('/settings') },
+  { href: '#/models', icon: 'models', label: 'Models', match: (p) => p === '/models' },
+  { href: '#/scorers', icon: 'scorers', label: 'Scorers', match: (p) => p === '/scorers' },
+  { href: '#/providers', icon: 'providers', label: 'Providers', match: (p) => p === '/providers' },
 ];
+
+/* Settings sits at the bottom of the rail, away from the things you use while
+ * actually working — it is configuration, not a destination you pass through. */
+const NAV_FOOT = [
+  { href: '#/settings', icon: 'settings', label: 'Settings', match: (p) => p.startsWith('/settings') },
+];
+
+function navLink(item, path) {
+  return `<a href="${item.href}" data-link class="${item.match(path) ? 'on' : ''}">
+    <span class="ico">${icon(item.icon)}</span>${esc(item.label)}</a>`;
+}
 
 function renderNav(path) {
   $('#nav').innerHTML = NAV.map((item) => (
-    item.group
-      ? `<p class="nav-group">${esc(item.group)}</p>`
-      : `<a href="${item.href}" data-link class="${item.match(path) ? 'on' : ''}">
-           <span class="ico" aria-hidden="true">${item.icon}</span>${esc(item.label)}</a>`
+    item.group ? `<p class="nav-group">${esc(item.group)}</p>` : navLink(item, path)
   )).join('');
+  $('#nav-foot-links').innerHTML = NAV_FOOT.map((item) => navLink(item, path)).join('');
 }
 
 function crumbs(...parts) {
@@ -1325,64 +1373,172 @@ async function viewRunCases(name, runId) {
 
 async function viewProviders() {
   crumbs({ label: 'Providers' });
-  const { providers } = await api('/api/providers');
+  const [{ providers }, local] = await Promise.all([
+    api('/api/providers'),
+    api('/api/local').catch(() => ({ running: false, installed: false, models: [] })),
+  ]);
+  state.providers = providers;
 
   app().innerHTML = `
-    <h1>Providers</h1>
-    <p class="lede">A profile is a named connection: an endpoint, a credential, and any
-    headers it needs. Two profiles can use the same vendor with different keys — that is
-    the whole reason they exist.</p>
-
-    ${providers.length ? `
-      <div class="grid-scroll"><table class="data">
-        <thead><tr><th>id</th><th>kind</th><th>endpoint</th><th>credential</th><th></th></tr></thead>
-        <tbody>${providers.map((p) => `
-          <tr>
-            <td><strong>${esc(p.id)}</strong></td>
-            <td>${esc(p.kind)}</td>
-            <td>${esc(p.base_url || 'vendor default')}</td>
-            <td><code>${esc(p.api_key_ref || 'conventional env var')}</code></td>
-            <td class="row-actions">
-              <button class="btn btn-sm" data-test="${esc(p.id)}">Test</button>
-              <button class="btn btn-sm btn-danger" data-rmprov="${esc(p.id)}">Remove</button>
-            </td>
-          </tr>`).join('')}</tbody>
-      </table></div>`
-      : '<p class="hint">No profiles yet. Models fall back to the vendor\'s conventional environment variable.</p>'}
-
-    <h2>Add a profile</h2>
-    <div class="card">
-      <div class="field"><label for="p-id">Name</label>
-        <input id="p-id" placeholder="work_openai"></div>
-      <div class="field"><label for="p-kind">Kind</label>
-        <select id="p-kind">
-          <option>openai</option><option>anthropic</option><option>gemini</option>
-          <option>openai_compatible</option><option>local</option><option>litellm</option>
-        </select></div>
-      <div class="field"><label for="p-url">Endpoint <span class="hint">optional</span></label>
-        <input id="p-url" placeholder="https://gateway.internal/v1"></div>
-      <div class="field">
-        <label for="p-key">Credential</label>
-        <input id="p-key" placeholder="\${env:OPENAI_API_KEY}">
-        <span class="hint">A reference is stored as written. A literal key is moved into
-        your OS keyring and only the reference is saved to disk.</span>
+    <div class="page-head">
+      <div>
+        <h1>Providers</h1>
+        <p class="lede">A profile is a named connection: an endpoint, a credential, and any
+        headers it needs. Two profiles can point at the same vendor with different keys —
+        that is the whole reason they exist.</p>
       </div>
-      <p class="btn-row"><button class="btn btn-primary" id="p-save">Save profile</button></p>
+    </div>
+
+    <div class="card">
+      <div class="head-row">
+        <div><p class="card-title">Configured profiles</p>
+          <p class="hint mb0">Hover a dot for what it means.</p></div>
+        <button class="btn btn-sm" id="check-all">${icon('refresh')} Check all</button>
+      </div>
+
+          ${providers.length ? `
+            <div class="grid-scroll" style="margin-top:.8rem">
+              <table class="data">
+                <thead><tr><th style="width:2.2rem"></th><th>profile</th>
+                  <th>endpoint &amp; credential</th><th></th></tr></thead>
+                <tbody>${providers.map((p) => `
+                  <tr data-row="${esc(p.id)}">
+                    <td><span data-status="${esc(p.id)}">${dot('', 'Not checked yet')}</span></td>
+                    <td><strong>${esc(p.id)}</strong><br><span class="hint">${esc(p.kind)}</span></td>
+                    <td><span class="model-id">${esc(p.base_url || 'vendor default')}</span>
+                      <br><code class="model-id hint">${esc(p.api_key_ref || 'conventional env var')}</code></td>
+                    <td>
+                      <div class="row-actions">
+                        <button class="icon-btn" data-test="${esc(p.id)}" title="Check this connection">${icon('plug')}</button>
+                        <button class="icon-btn" data-disc="${esc(p.id)}" title="List the models it serves">${icon('refresh')}</button>
+                        <button class="icon-btn" data-edit="${esc(p.id)}" title="Edit this profile">${icon('edit')}</button>
+                        <button class="icon-btn" data-rmprov="${esc(p.id)}" title="Remove this profile and its stored key">${icon('trash')}</button>
+                      </div>
+                    </td>
+                  </tr>
+                  <tr data-models="${esc(p.id)}" hidden><td></td><td colspan="3"></td></tr>`).join('')}
+                </tbody>
+              </table>
+            </div>`
+        : `<p class="hint" style="margin-top:.6rem">No profiles yet. Models fall back to the
+           vendor's conventional environment variable.</p>`}
+    </div>
+
+    <div class="split" style="margin-top:1rem">
+      <div class="card" id="provider-form"></div>
+      <div>
+        <div class="card">
+          <div class="head-row">
+            <p class="card-title">On this machine</p>
+            <span data-status="__local">${dot(local.running ? 'ok' : 'bad',
+              local.running ? 'Running and reachable' : 'Not running')}</span>
+          </div>
+          <p class="hint">Local models cost nothing per call and never leave the box.</p>
+          <div id="local-body">${renderLocal(local)}</div>
+        </div>
+      </div>
     </div>`;
 
-  app().querySelectorAll('[data-test]').forEach((b) => b.addEventListener('click', async () => {
-    b.disabled = true; b.textContent = 'Testing…';
+  renderProviderForm(null);
+  wireProviderRow();
+
+  $('#check-all').addEventListener('click', () => providers.forEach((p) => checkProvider(p.id)));
+  providers.forEach((p) => checkProvider(p.id));
+}
+
+function renderLocal(local) {
+  if (!local.installed) {
+    return `<p class="hint">Ollama is not installed.</p>
+      <p class="btn-row"><a class="btn btn-sm" href="https://ollama.com">Install Ollama ${icon('external')}</a></p>`;
+  }
+  if (!local.running) {
+    return `<p class="hint">Installed, but nothing is answering on
+      <code>${esc(local.base_url || 'localhost:11434')}</code>.</p>
+      <p class="btn-row"><button class="btn btn-sm btn-primary" id="local-start">${icon('play')} Start it</button></p>`;
+  }
+  return `
+    <p class="hint">${local.models.length} model${local.models.length === 1 ? '' : 's'} available.</p>
+    <div class="model-list">${local.models.map((m) => `
+      <div class="model-line">
+        ${dot('ok', 'Loaded and ready')}
+        <span class="model-name">${esc(m)}</span>
+      </div>`).join('') || '<p class="hint">None pulled yet — <code>ollama pull llama3.2</code></p>'}</div>
+    <p class="btn-row"><button class="btn btn-sm" id="local-refresh">${icon('refresh')} Refresh</button></p>`;
+}
+
+function wireLocal() {
+  if ($('#local-start')) {
+    $('#local-start').addEventListener('click', async (event) => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      button.innerHTML = `${icon('refresh')} Starting…`;
+      const report = await api('/api/local/start', { method: 'POST' });
+      toast(report.detail, !report.running);
+      await refreshLocal();
+    });
+  }
+  if ($('#local-refresh')) $('#local-refresh').addEventListener('click', refreshLocal);
+}
+
+async function refreshLocal() {
+  const local = await api('/api/local').catch(() => ({ running: false, installed: false, models: [] }));
+  $('#local-body').innerHTML = renderLocal(local);
+  const badge = app().querySelector('[data-status="__local"]');
+  if (badge) {
+    badge.innerHTML = dot(local.running ? 'ok' : 'bad',
+      local.running ? 'Running and reachable' : 'Not running');
+  }
+  wireLocal();
+}
+
+/** Ask the server whether one profile is reachable, and colour its dot. */
+async function checkProvider(id) {
+  const cell = app().querySelector(`[data-status="${CSS.escape(id)}"]`);
+  if (cell) cell.innerHTML = dot('busy', 'Checking…');
+  try {
+    const report = await api(`/api/providers/${id}/test`, { method: 'POST' });
+    if (cell) {
+      cell.innerHTML = report.ok
+        ? dot('ok', `Reachable in ${report.latency_ms} ms`)
+        : dot('bad', report.error || `Unreachable (HTTP ${report.status})`);
+    }
+  } catch (error) {
+    if (cell) cell.innerHTML = dot('bad', error.message);
+  }
+}
+
+function wireProviderRow() {
+  wireLocal();
+
+  app().querySelectorAll('[data-test]').forEach((b) =>
+    b.addEventListener('click', () => checkProvider(b.dataset.test)));
+
+  app().querySelectorAll('[data-edit]').forEach((b) =>
+    b.addEventListener('click', () => {
+      renderProviderForm(state.providers.find((p) => p.id === b.dataset.edit) || null);
+      $('#provider-form').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }));
+
+  app().querySelectorAll('[data-disc]').forEach((b) => b.addEventListener('click', async () => {
+    const id = b.dataset.disc;
+    const row = app().querySelector(`[data-models="${CSS.escape(id)}"]`);
+    b.disabled = true;
     try {
-      const report = await api(`/api/providers/${b.dataset.test}/test`, { method: 'POST' });
-      toast(report.ok ? `Reachable in ${report.latency_ms}ms.` : `Unreachable — ${report.error || report.status}`, !report.ok);
-    } finally { b.disabled = false; b.textContent = 'Test'; }
+      const { models } = await api(`/api/providers/${id}/discover`, { method: 'POST' });
+      row.hidden = false;
+      row.querySelector('td:last-child').innerHTML = models.length
+        ? `<div class="model-list">${models.map((m) => `
+             <div class="model-line">${dot('ok', 'Served by this endpoint')}
+               <span class="model-name">${esc(m)}</span></div>`).join('')}</div>`
+        : '<p class="hint mb0">This endpoint does not list its models. Many gateways do not.</p>';
+    } finally { b.disabled = false; }
   }));
 
   app().querySelectorAll('[data-rmprov]').forEach((b) => b.addEventListener('click', async () => {
     const id = b.dataset.rmprov;
     const plan = await api(`/api/providers/${id}?dry_run=1`, { method: 'DELETE' });
     await confirmDestructive({
-      title: `Remove provider ${id}?`,
+      title: `Remove ${id}?`,
       plan,
       danger: 'Remove',
       commit: async () => {
@@ -1392,6 +1548,38 @@ async function viewProviders() {
       },
     });
   }));
+}
+
+/** One form for both add and edit — saving by an existing id replaces it. */
+function renderProviderForm(profile) {
+  const editing = Boolean(profile);
+  $('#provider-form').innerHTML = `
+    <p class="card-title">${editing ? `Edit ${esc(profile.id)}` : 'Add a profile'}</p>
+    <p class="hint">${editing
+      ? 'Saving replaces the stored profile.'
+      : 'Point at any vendor or an OpenAI-compatible endpoint.'}</p>
+    <div class="field-row" style="margin-top:.8rem">
+      <div class="field"><label for="p-id">Name</label>
+        <input id="p-id" placeholder="work_openai" value="${esc(profile?.id || '')}"
+               ${editing ? 'readonly' : ''}></div>
+      <div class="field"><label for="p-kind">Kind</label>
+        <select id="p-kind">${
+          ['openai', 'anthropic', 'gemini', 'openai_compatible', 'local', 'litellm']
+            .map((k) => `<option ${profile?.kind === k ? 'selected' : ''}>${k}</option>`).join('')
+        }</select></div>
+    </div>
+    <div class="field"><label for="p-url">Endpoint <span class="hint">optional</span></label>
+      <input id="p-url" placeholder="https://gateway.internal/v1" value="${esc(profile?.base_url || '')}"></div>
+    <div class="field"><label for="p-key">Credential</label>
+      <input id="p-key" placeholder="\${env:OPENAI_API_KEY}" value="${esc(profile?.api_key_ref || '')}">
+      <span class="hint">A reference is stored as written. A literal key is moved into your OS
+      keyring, and only the reference is written to disk.</span></div>
+    <div class="btn-row">
+      <button class="btn btn-primary btn-sm" id="p-save">${icon('check')} ${editing ? 'Save changes' : 'Add profile'}</button>
+      ${editing ? `<button class="btn btn-sm" id="p-cancel">Cancel</button>` : ''}
+    </div>`;
+
+  if ($('#p-cancel')) $('#p-cancel').addEventListener('click', () => renderProviderForm(null));
 
   $('#p-save').addEventListener('click', async () => {
     const body = {
@@ -1402,7 +1590,7 @@ async function viewProviders() {
     };
     if (!body.id) { toast('Give the profile a name.', true); return; }
     await api('/api/providers', { method: 'POST', body });
-    toast(`Saved ${body.id}.`);
+    toast(editing ? `Updated ${body.id}.` : `Added ${body.id}.`);
     router();
   });
 }
@@ -1480,7 +1668,7 @@ async function viewSettings(tab = 'general') {
     ${tab === 'storage' || tab === 'about' ? '' :
       '<p class="btn-row"><button class="btn btn-primary" id="s-save">Save</button></p>'}`;
 
-  if ($('#about-version')) $('#about-version').textContent = state.version ? `v${state.version}` : '';
+
 
   if ($('#s-save')) {
     $('#s-save').addEventListener('click', async () => {
@@ -1563,23 +1751,97 @@ async function viewModels() {
 async function viewScorers() {
   crumbs({ label: 'Scorers' });
   const catalog = state.catalog || await api('/api/catalog');
-  const scorers = catalog.scorers || catalog.eval_types || [];
+  const scorers = catalog.scorers || [];
+
+  /* What the catalog cannot tell you: what a reference for this type should
+   * look like, and how it fails. That is the part people get wrong, so it
+   * belongs on the page rather than only in the docs. */
+  const GUIDE = {
+    classification: { ref: 'billing', use: 'One of a fixed set of labels.',
+      fails: 'Two labels where one contains the other, or a model that names a label while rejecting it.' },
+    exact_match: { ref: 'refund issued', use: 'A short deterministic string.',
+      fails: 'The model adds a preamble. Strip it in a hook, or use contains.' },
+    contains: { ref: '["order id", "refund"]', use: 'The answer must mention certain things.',
+      fails: 'Cannot tell a mention from a negation — "does not include a refund" still matches.' },
+    regex: { ref: '^ORD-\\d{6}$', use: 'A structured value: an id, a date, a code.',
+      fails: 'Anchored too tightly. Models vary the text around the value far more than the value.' },
+    numeric: { ref: '42.5', use: 'A number, compared with a tolerance.',
+      fails: 'Several numbers in the output and the wanted one is not first.' },
+    json_match: { ref: '{"total": 12.5, "currency": "USD"}', use: 'Structured extraction. Scores partial credit per key.',
+      fails: 'The model wraps JSON in a markdown fence — strip it in post_process.' },
+    semantic: { ref: 'the customer was charged twice', use: 'Free text where wording varies but meaning should not.',
+      fails: 'The builtin is lexical, so it rewards shared vocabulary rather than shared meaning.' },
+    code_exec: { ref: 'assert solve([1,2]) == 3', use: 'Generated code, run against your assertions.',
+      fails: 'Process isolation, not a sandbox. Do not point it at an untrusted model.' },
+    llm_judge: { ref: 'a rubric describing a good answer', use: 'Qualities no deterministic scorer can express.',
+      fails: 'Costs a second call per case, and makes your ranking depend on another model.' },
+    manual: { ref: '(none)', use: 'Collect outputs now, grade them by hand, then automate.',
+      fails: 'Always scores 0.5, so it never ranks anything on its own.' },
+  };
+
   app().innerHTML = `
     <h1>Scorers</h1>
     <p class="lede">How an answer is graded. Pick the one that matches the shape of a correct
-    answer, not the one that sounds most sophisticated.</p>
-    ${scorers.length ? `
-      <div class="grid-scroll"><table class="data">
-        <thead><tr><th>eval type</th><th>what it does</th></tr></thead>
-        <tbody>${scorers.map((sc) => `
-          <tr><td><code>${esc(sc.name || sc)}</code></td>
-              <td>${esc(sc.description || sc.what || '')}</td></tr>`).join('')}</tbody>
-      </table></div>` : '<p class="hint">No scorer metadata returned.</p>'}`;
+    answer, not the one that sounds most sophisticated — a wrong scorer makes every model
+    look equally bad.</p>
+
+    <div class="grid">${scorers.map((sc) => {
+      const name = sc.name || String(sc);
+      const guide = GUIDE[name] || {};
+      return `
+        <div class="card project-card">
+          <div class="head-row">
+            <p class="card-title"><code>${esc(name)}</code></p>
+            <span class="pill mute">${esc(sc.source || 'builtin')}</span>
+          </div>
+          <p class="hint mb0">${esc(sc.description || '')}</p>
+          ${guide.use ? `<p class="small" style="margin:.6rem 0 .2rem"><strong>Reach for it when</strong><br>${esc(guide.use)}</p>` : ''}
+          ${guide.ref ? `<p class="small mb0"><strong>A reference looks like</strong><br>
+            <code class="model-id">${esc(guide.ref)}</code></p>` : ''}
+          ${guide.fails ? `<p class="small" style="margin-top:.5rem"><span class="warn">${icon('x', { size: 13 })}</span>
+            <strong>Where it breaks</strong><br>${esc(guide.fails)}</p>` : ''}
+        </div>`;
+    }).join('')}</div>
+
+    <div class="callout" style="margin-top:1.25rem">
+      <p class="mb0"><strong>None of these fit?</strong> Drop a Python file in your project's
+      <code>scorers/</code> folder and it is picked up automatically — no registration, no plugin
+      manifest. It can also emit its own metrics, which then become weightable dimensions on the
+      leaderboard by name.</p>
+    </div>`;
 }
 
 /* ---------------------------------------------------------------- boot */
 
+/* Light is the default. An explicit choice is remembered and stamped on the
+ * root so it beats prefers-color-scheme either way; with no choice stored we
+ * leave the attribute off and follow the OS. */
+function applyTheme(theme) {
+  if (theme === 'light' || theme === 'dark') {
+    document.documentElement.setAttribute('data-theme', theme);
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+  }
+  const dark = theme === 'dark'
+    || (theme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+  $('#theme-toggle').innerHTML = icon(dark ? 'sun' : 'moon', {
+    title: dark ? 'Switch to light' : 'Switch to dark',
+  });
+}
+
+function storedTheme() {
+  try { return localStorage.getItem('arena-theme') || 'system'; } catch { return 'system'; }
+}
+
 window.addEventListener('hashchange', router);
+
+$('#theme-toggle').addEventListener('click', () => {
+  const now = document.documentElement.getAttribute('data-theme')
+    || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  const next = now === 'dark' ? 'light' : 'dark';
+  try { localStorage.setItem('arena-theme', next); } catch { /* private mode */ }
+  applyTheme(next);
+});
 
 $('#nav-toggle').addEventListener('click', () => {
   const nav = $('#sidenav');
@@ -1593,16 +1855,23 @@ document.addEventListener('keydown', (event) => {
 });
 
 (async function start() {
+  applyTheme(storedTheme());
+  $('#nav-toggle').innerHTML = icon('menu', { title: 'Menu' });
+
+  /* Anything pointing off this origin opens in a new tab, so a click never
+   * throws away an evaluation in progress. Delegated, so it covers markup
+   * every view renders without each one remembering to set it. */
+  document.addEventListener('click', (event) => {
+    const link = event.target.closest?.('a[href^="http"]');
+    if (link && link.host !== location.host) {
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+    }
+  }, true);
+
   try {
     state.catalog = await api('/api/catalog');
-    // The catalog carries no version, but the server stamps one onto the asset
-    // URLs — a single source rather than a second thing to keep in sync.
-    const stamped = document.querySelector('link[href*="app.css"]')?.getAttribute('href') || '';
-    const version = (stamped.match(/[?&]v=([^&]+)/) || [])[1];
-    if (version) {
-      state.version = version;
-      $('#version').textContent = `v${version}`;
-    }
+
   } catch (error) {
     app().innerHTML = `<div class="card"><h2>Cannot reach the server</h2><p>${esc(error.message)}</p></div>`;
     return;

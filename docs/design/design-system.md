@@ -1,7 +1,14 @@
 # Design system
 
-`agent_arena/web/static/app.css`, 308 lines of hand-written CSS with no build
-step (invariant 2). Everything below is read from that file.
+`agent_arena/web/static/app.css` — hand-written CSS with no build step
+(invariant 2). Light is the default; dark is a token swap under
+`prefers-color-scheme`, plus an explicit `[data-theme]` so the in-app toggle
+beats the OS in both directions.
+
+The palette follows the AWS console: a light neutral page, white containers,
+console blue for action, and a single dark navy rail. Amazon orange is present
+but rationed — it marks progress and nothing else, because an accent that
+appears everywhere stops meaning anything.
 
 ## Colour tokens
 

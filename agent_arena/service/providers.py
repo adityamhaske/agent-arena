@@ -101,6 +101,80 @@ def delete_provider(
     return plan
 
 
+#: Local runtimes this can start, and the exact argv to start each with.
+#: An allowlist rather than a command string: the UI is unauthenticated on
+#: loopback, and "start a server for me" must never become "run this".
+LOCAL_RUNTIMES: dict[str, tuple[str, ...]] = {
+    "ollama": ("ollama", "serve"),
+}
+
+
+def start_local_runtime(runtime: str = "ollama", wait_s: float = 6.0) -> dict[str, Any]:
+    """Start a local model server, if it is installed and not already running.
+
+    Returns a report rather than raising: this is driven by a button, and every
+    outcome — already running, not installed, started, failed — is something
+    the page needs to say plainly rather than a stack trace.
+    """
+    import shutil  # noqa: PLC0415
+    import subprocess  # noqa: PLC0415
+    import time  # noqa: PLC0415
+
+    argv = LOCAL_RUNTIMES.get(runtime)
+    if argv is None:
+        raise ServiceError(
+            f"unknown local runtime {runtime!r}; known: {', '.join(sorted(LOCAL_RUNTIMES))}"
+        )
+
+    probe = ProviderSpec.parse(
+        {"id": f"_probe_{runtime}", "kind": "local", "base_url": "http://localhost:11434/v1"}, 0
+    )
+    if health_check(probe, timeout_s=2.0)["ok"]:
+        return {"runtime": runtime, "started": False, "running": True,
+                "detail": "already running"}
+
+    if shutil.which(argv[0]) is None:
+        return {"runtime": runtime, "started": False, "running": False,
+                "detail": f"{argv[0]} is not installed — see https://ollama.com"}
+
+    try:
+        subprocess.Popen(  # noqa: S603 — fixed argv from the allowlist above
+            list(argv),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except OSError as exc:
+        return {"runtime": runtime, "started": False, "running": False,
+                "detail": f"could not start {argv[0]}: {exc}"}
+
+    deadline = time.monotonic() + wait_s
+    while time.monotonic() < deadline:
+        if health_check(probe, timeout_s=1.5)["ok"]:
+            return {"runtime": runtime, "started": True, "running": True,
+                    "detail": "started"}
+        time.sleep(0.4)
+    return {"runtime": runtime, "started": True, "running": False,
+            "detail": "started, but not answering yet — give it a moment"}
+
+
+def local_runtime_status(runtime: str = "ollama") -> dict[str, Any]:
+    """Is a local model server up, and what is it serving?"""
+    import shutil  # noqa: PLC0415
+
+    probe = ProviderSpec.parse(
+        {"id": f"_probe_{runtime}", "kind": "local", "base_url": "http://localhost:11434/v1"}, 0
+    )
+    report = health_check(probe, timeout_s=2.0)
+    return {
+        "runtime": runtime,
+        "running": report["ok"],
+        "installed": shutil.which(LOCAL_RUNTIMES.get(runtime, ("",))[0]) is not None,
+        "models": discover_models(probe) if report["ok"] else [],
+        "base_url": probe.base_url,
+    }
+
+
 def _opener(profile: ProviderSpec) -> Any:
     handlers: list[Any] = []
     if profile.proxy:

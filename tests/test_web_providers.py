@@ -153,3 +153,34 @@ def test_static_assets_are_not_cached(client):
 
     status, _ = client("GET", "/app.css")
     assert status == 200
+
+
+# --------------------------------------------------------- local runtime
+
+
+def test_local_runtime_status_never_raises(client):
+    # Driven by a button on the Providers page, so every outcome — installed,
+    # running, neither — has to come back as data rather than a 500.
+    status, body = client("GET", "/api/local")
+    assert status == 200
+    assert set(body) >= {"runtime", "running", "installed", "models"}
+    assert isinstance(body["models"], list)
+
+
+def test_starting_an_unknown_runtime_is_rejected():
+    from agent_arena.service.errors import ServiceError
+    from agent_arena.service.providers import start_local_runtime
+
+    with pytest.raises(ServiceError, match="unknown local runtime"):
+        start_local_runtime("definitely-not-a-runtime")
+
+
+def test_the_runtime_allowlist_is_fixed_argv_not_a_command_string():
+    # The UI is unauthenticated on loopback: "start a server for me" must never
+    # become "run this". Each entry is a tuple the code passes to Popen as-is.
+    from agent_arena.service.providers import LOCAL_RUNTIMES
+
+    assert LOCAL_RUNTIMES
+    for argv in LOCAL_RUNTIMES.values():
+        assert isinstance(argv, tuple)
+        assert all(isinstance(part, str) and " " not in part for part in argv)

@@ -110,6 +110,8 @@ def build_routes(api: ArenaAPI) -> list[Route]:
             r"/api/providers/(?P<provider_id>[A-Za-z0-9_.-]{1,64})/discover",
             lambda provider_id, **_: api.discover_provider_models(provider_id),
         ),
+        Route("GET", r"/api/local", lambda **_: api.local_runtime()),
+        Route("POST", r"/api/local/start", lambda **_: api.start_local_runtime()),
         Route("GET", r"/api/settings", lambda **_: api.settings()),
         Route("PUT", r"/api/settings", lambda body, **_: api.update_settings(body)),
     ]

@@ -694,6 +694,16 @@ class ArenaAPI:
 
         return {"models": svc.discover_models(svc.get_provider(provider_id))}
 
+    def local_runtime(self) -> dict[str, Any]:
+        from ..service import providers as svc  # noqa: PLC0415
+
+        return svc.local_runtime_status()
+
+    def start_local_runtime(self) -> dict[str, Any]:
+        from ..service import providers as svc  # noqa: PLC0415
+
+        return svc.start_local_runtime()
+
     def settings(self) -> dict[str, Any]:
         from ..service import settings as svc  # noqa: PLC0415
 

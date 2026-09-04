@@ -6,7 +6,8 @@
 <meta name="color-scheme" content="light dark">
 <title>Agent Arena</title>
 <link rel="stylesheet" href="/app.css?v=__ARENA_VERSION__">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏟️</text></svg>">
+<!-- The documentation site's mark, so the app and the docs read as one product. -->
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='4' y='4' width='24' height='24' fill='none' stroke='%230268bf' stroke-width='3'/><rect x='19' y='9' width='5' height='5' fill='%230268bf'/></svg>">
 </head>
 <body>
 
@@ -16,7 +17,10 @@
 
   <aside class="sidenav" id="sidenav">
     <a class="brand" href="#/" data-link>
-      <span class="brand-mark" aria-hidden="true">◆</span>
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+        <rect x="4" y="4" width="24" height="24" fill="none" stroke="currentColor" stroke-width="3"/>
+        <rect x="19" y="9" width="5" height="5" fill="currentColor"/>
+      </svg>
       <span>Agent Arena</span>
     </a>
 
@@ -24,15 +28,16 @@
 
     <div class="nav-foot">
       <div id="run-pill" class="run-pill" hidden></div>
-      <p class="version" id="version"></p>
+      <nav class="nav" id="nav-foot-links" aria-label="Configuration"><!-- rendered by app.js --></nav>
     </div>
   </aside>
 
   <div class="pane">
     <header class="topbar">
       <button class="icon-btn nav-toggle" type="button" id="nav-toggle"
-              aria-expanded="false" aria-controls="sidenav" aria-label="Toggle navigation">☰</button>
+              aria-expanded="false" aria-controls="sidenav" aria-label="Toggle navigation"></button>
       <nav class="crumbs" id="crumbs" aria-label="Breadcrumb"></nav>
+      <button class="icon-btn" type="button" id="theme-toggle" aria-label="Switch between light and dark"></button>
       <a href="#/new" data-link class="btn btn-primary btn-sm">New evaluation</a>
     </header>
 
