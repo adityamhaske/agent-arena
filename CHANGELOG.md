@@ -10,7 +10,9 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [2.0.0] - unreleased
+## [2.0.0rc1] - 2026-09-03
+
+First release candidate. Published to TestPyPI only.
 
 ### Added
 

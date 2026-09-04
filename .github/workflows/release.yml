@@ -78,6 +78,21 @@ jobs:
         with:
           name: dist
           path: dist
+      # The failure AGENTS.md warns about: tag one version, ship another.
+      # Caught here rather than after an unreusable version number is burned.
+      - name: The tag must match the packaged version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          built=$(ls dist/*.whl | head -1 | sed -E 's/.*agent_arena-([^-]+)-.*/\1/')
+          normalised=$(printf '%s' "$tag" | tr -d '-')
+          echo "tag=$tag  normalised=$normalised  wheel=$built"
+          if [ "$normalised" != "$built" ]; then
+            echo "::error::tag $tag does not match packaged version $built."
+            echo "::error::Bump pyproject.toml and agent_arena/__init__.py, then re-tag."
+            exit 1
+          fi
+
 
       - name: Install the wheel into a clean venv
         run: |
@@ -133,14 +148,26 @@ jobs:
           name: dist
           path: dist
 
-      # A tag push is the only thing that reaches the real index.
+      # Only a FINAL version tag reaches the real index. A pre-release tag
+      # (v2.0.0-rc1, -a1, -b2) goes to TestPyPI instead, because PyPI never
+      # lets a version number be reused: publishing a release candidate there
+      # by accident burns the number permanently.
       - name: Publish to PyPI
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: >-
+          startsWith(github.ref, 'refs/tags/v')
+          && !contains(github.ref, '-rc')
+          && !contains(github.ref, '-a')
+          && !contains(github.ref, '-b')
         uses: pypa/gh-action-pypi-publish@release/v1
 
-      # The dry run: same artifact, same OIDC flow, harmless index.
+      # Pre-release tags and manual runs: same artifact, same OIDC flow,
+      # harmless index.
       - name: Publish to TestPyPI
-        if: github.event_name == 'workflow_dispatch'
+        if: >-
+          github.event_name == 'workflow_dispatch'
+          || contains(github.ref, '-rc')
+          || contains(github.ref, '-a')
+          || contains(github.ref, '-b')
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
