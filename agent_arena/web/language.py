@@ -37,7 +37,36 @@ JOB_PRESETS: list[dict[str, Any]] = [
             "You are a classifier. Reply with exactly one label from the list "
             "and nothing else."
         ),
+        "input_hint": 'I was charged twice for the same order this month.',
+        "starter": [
+            ('A payment came out twice for order 4471.', 'billing'),
+            ('The mobile app crashes when I open reports.', 'technical'),
+        ],
         "weights": {"accuracy": 0.55, "cost": 0.25, "latency": 0.20},
+    },
+    {
+        "id": "code",
+        "title": "Write or fix code",
+        "blurb": "The answer is code, and it is right if it actually runs and passes your checks.",
+        "example": "Given a function signature and a docstring, produce a working implementation.",
+        "eval_type": "code_exec",
+        "answer_label": "What must the code satisfy?",
+        "answer_hint": "assert add(2, 3) == 5",
+        "needs_labels": False,
+        "max_tokens": 900,
+        "system": (
+            "You are a careful engineer. Reply with a single Python code block "
+            "and nothing else — no explanation, no prose, no markdown fence."
+        ),
+        # Correctness dominates: code that does not run is not cheaper, it is
+        # useless. Latency matters least — a coding task is rarely interactive
+        # at the per-call level.
+        "input_hint": 'Write `def add(a, b)` that returns their sum.',
+        "starter": [
+            ('Write `def add(a, b)` that returns their sum.', 'assert add(2, 3) == 5\nassert add(-1, 1) == 0'),
+            ('Write `def is_palindrome(s)` ignoring case and spaces.', "assert is_palindrome('A man a plan a canal Panama')\nassert not is_palindrome('hello')"),
+        ],
+        "weights": {"accuracy": 0.75, "cost": 0.15, "latency": 0.10},
     },
     {
         "id": "extract",
@@ -53,6 +82,10 @@ JOB_PRESETS: list[dict[str, Any]] = [
             "Extract the requested fields. Reply with JSON only — no explanation, "
             "no markdown fence."
         ),
+        "input_hint": 'Invoice 88-A from Acme Ltd, dated 2026-03-04, total $249.99.',
+        "starter": [
+            ('Invoice 88-A from Acme Ltd, dated 2026-03-04, total $249.99.', '{"vendor": "Acme Ltd", "total": 249.99}'),
+        ],
         "weights": {"accuracy": 0.70, "cost": 0.15, "latency": 0.15},
     },
     {
@@ -66,6 +99,10 @@ JOB_PRESETS: list[dict[str, Any]] = [
         "needs_labels": False,
         "max_tokens": 500,
         "system": "Answer the question accurately and concisely.",
+        "input_hint": 'How do I reset my password?',
+        "starter": [
+            ('How do I reset my password?', "Use the 'forgot password' link on the sign-in page; a reset email arrives within a few minutes."),
+        ],
         "weights": {"accuracy": 0.65, "cost": 0.15, "latency": 0.20},
     },
     {
@@ -79,6 +116,10 @@ JOB_PRESETS: list[dict[str, Any]] = [
         "needs_labels": False,
         "max_tokens": 200,
         "system": "Answer with the requested detail.",
+        "input_hint": 'Your order ORD-449120 has shipped and arrives Tuesday.',
+        "starter": [
+            ('Your order ORD-449120 has shipped and arrives Tuesday.', 'ORD-449120'),
+        ],
         "weights": {"accuracy": 0.70, "cost": 0.15, "latency": 0.15},
     },
     {
@@ -92,6 +133,10 @@ JOB_PRESETS: list[dict[str, Any]] = [
         "needs_labels": False,
         "max_tokens": 64,
         "system": "Reply with the number only.",
+        "input_hint": 'Three items at $12.50 each, plus $4 delivery. What is the total?',
+        "starter": [
+            ('Three items at $12.50 each, plus $4 delivery. What is the total?', '41.50'),
+        ],
         "weights": {"accuracy": 0.75, "cost": 0.10, "latency": 0.15},
     },
     {
@@ -108,6 +153,10 @@ JOB_PRESETS: list[dict[str, Any]] = [
         "needs_labels": False,
         "max_tokens": 1000,
         "system": "Write clearly and stick to what the source supports.",
+        "input_hint": 'Summarise this paragraph for a newsletter audience.',
+        "starter": [
+            ('Summarise for a newsletter: the study found multi-agent handoffs drop fields.', 'A short, plain summary that keeps the finding and its caveat.'),
+        ],
         "weights": {"accuracy": 0.70, "cost": 0.20, "latency": 0.10},
         "caution": (
             "Grading with an AI judge costs money on top of the run itself, and "
@@ -125,6 +174,10 @@ JOB_PRESETS: list[dict[str, Any]] = [
         "needs_labels": False,
         "max_tokens": 32,
         "system": "Reply with the answer only.",
+        "input_hint": "Normalise 'United States of America' to its ISO code.",
+        "starter": [
+            ("Normalise 'United States of America' to its ISO code.", 'US'),
+        ],
         "weights": {"accuracy": 0.60, "cost": 0.20, "latency": 0.20},
     },
 ]

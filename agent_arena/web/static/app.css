@@ -194,7 +194,12 @@ code { font-family: var(--mono); font-size: .86em; }
 
 main#app { padding: 1.5rem; max-width: 1240px; width: 100%; }
 
+/* An eyebrow above a heading, with anything else pushed to the right. The
+ * heading itself must stay left-aligned — a wrapped flex row was letting it
+ * drift to the right edge on the wizard, which read as a rendering fault. */
 .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.page-head > div:first-child { flex: 1 1 20rem; min-width: 0; }
+.page-head h1, .page-head .eyebrow { text-align: left; }
 .head-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
 .head-row h1, .page-head h1 { margin-bottom: 0; }
 
@@ -289,6 +294,16 @@ main#app { padding: 1.5rem; max-width: 1240px; width: 100%; }
 }
 .field-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0 .9rem; }
 
+/* An input paired with a small remove control. Grid rather than flex so the
+ * button keeps its size while the input takes the rest — stacked, these read
+ * as two unrelated controls. */
+.field.removable, .removable-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  gap: .4rem; align-items: center;
+}
+.removable-row .icon-btn, .field.removable .icon-btn,
+.field.removable > .btn, .removable-row > .btn { flex: none; }
+
 .settings-tabs { display: flex; flex-wrap: wrap; gap: .15rem; border-bottom: 1px solid var(--border); margin-bottom: 1.25rem; }
 .settings-tabs a {
   padding: .5rem .85rem; color: var(--text-dim); font-size: .87rem; font-weight: 550;
@@ -364,10 +379,15 @@ tr.is-winner td { background: var(--good-soft); }
 .steps { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: 1.25rem; }
 .step { display: flex; align-items: center; gap: .45rem; padding: .35rem .7rem; border-radius: 999px;
         border: 1px solid var(--border); background: var(--surface); font-size: .8rem; color: var(--text-dim); }
-.step.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 650; }
+.step.on, .step[data-state="current"] {
+  border-color: var(--accent); color: var(--accent);
+  background: var(--accent-soft); font-weight: 650;
+}
+.step[data-state="done"] { color: var(--good); border-color: var(--good-line); background: var(--good-soft); }
+.step[data-state="done"] .step-num { background: var(--good); color: #fff; }
 .step-num { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%;
             background: var(--divider); color: var(--text-dim); font-size: .68rem; font-weight: 700; }
-.step.on .step-num { background: var(--accent); color: #fff; }
+.step.on .step-num, .step[data-state="current"] .step-num { background: var(--accent); color: #fff; }
 
 .choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: .7rem; }
 .choice { text-align: left; padding: .8rem .9rem; border: 1px solid var(--border); border-radius: var(--radius);
@@ -428,3 +448,13 @@ summary { cursor: pointer; color: var(--text-dim); font-size: .86rem; }
 summary:hover { color: var(--text); }
 pre { background: var(--surface-sunk); border: 1px solid var(--border);
       padding: .7rem; border-radius: var(--radius-sm); overflow-x: auto; font-size: .78rem; }
+
+/* Case cells hold prose on one side and often several assertions on the
+ * other. Two lines was enough for a label and nothing else. */
+table textarea {
+  width: 100%; min-height: 4.5rem; resize: vertical;
+  padding: .45rem .55rem; border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); background: var(--surface);
+  color: var(--text); font: inherit; font-size: .82rem; line-height: 1.45;
+}
+table textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }

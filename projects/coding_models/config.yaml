@@ -1,0 +1,76 @@
+# Which model should write code for my project?
+#
+# UNLIKE THE OTHER EXAMPLES, THIS ONE NEEDS A REAL MODEL.
+#
+# Every other project here runs offline against `mock:` stand-ins. This one
+# cannot: a simulated model returns the reference, and for a coding task the
+# reference is the *assertions*, not an implementation — so a mock scores 0%
+# on every case no matter how good it is pretending to be. Code is the one job
+# you cannot fake a candidate for.
+#
+# So: uncomment at least one model below, then
+#
+#   arena validate --project projects/coding_models     # works with no key
+#   arena evaluate --project projects/coding_models --dry-run
+#   arena evaluate --project projects/coding_models
+#
+# A local model via Ollama costs nothing per call and is a good first
+# candidate if you would rather not spend anything.
+
+project: coding_models
+description: >
+  Pick a model to write code for this repo. Correctness dominates: code that
+  does not run is not cheaper, it is useless. Cost still matters because a
+  coding assistant is called constantly, and latency matters least — nobody
+  waits on one call the way they wait on a chat reply.
+
+models:
+  # Free, and a genuinely reasonable coding candidate. Needs `ollama serve`
+  # and `ollama pull qwen2.5-coder:7b` — the Providers page in `arena ui` can
+  # start Ollama for you and show you what it is serving.
+  # - {key: local_qwen, model: qwen2.5-coder:7b}
+
+  # Hosted candidates. A model whose key is missing is skipped with the reason
+  # printed, not counted as a failure — so you can leave several uncommented
+  # and only the ones you have keys for will run.
+  # - {key: sonnet,  model: claude-sonnet-5}
+  # - {key: haiku,   model: claude-haiku-4-5}
+  # - {key: gpt5,    model: gpt-5}
+  # - {key: gpt5_mini, model: gpt-5-mini}
+
+  # Placeholder so the file is valid before you uncomment anything above.
+  # Delete this line once you have a real candidate.
+  - {key: placeholder, model: claude-haiku-4-5}
+
+defaults:
+  system: >
+    You are a careful engineer. Reply with a single Python code block and
+    nothing else — no explanation, no prose, no markdown fence.
+  max_tokens: 900
+  temperature: 0
+
+run:
+  trials: 3          # the same prompt three times: coding output varies
+  concurrency: 4
+  timeout_s: 90
+
+metrics:
+  weights: {accuracy: 0.75, cost: 0.15, latency: 0.10}
+  cost:    {budget_usd_per_1k_calls: 40.0}
+  latency: {target_ms: 8000}
+
+constraints:
+  # Code that does not run is not a cheaper answer, it is the wrong answer.
+  min_accuracy: 0.70
+  max_latency_p95_ms: 30000
+
+scorers:
+  default: code_exec
+
+# Strip a markdown fence before the code is executed — models add one even
+# when told not to, and that is a formatting difference, not a wrong answer.
+hooks:
+  post_process: hooks.py:post_process
+
+output:
+  dir: results

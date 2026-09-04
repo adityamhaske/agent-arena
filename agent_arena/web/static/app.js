@@ -289,8 +289,10 @@ function renderWizard() {
 
   app().innerHTML = `
     <div class="page-head">
-      <div class="eyebrow">New evaluation</div>
-      <h1>${esc(WIZARD_STEPS[d.step])}</h1>
+      <div>
+        <div class="eyebrow">New evaluation</div>
+        <h1>${esc(WIZARD_STEPS[d.step])}</h1>
+      </div>
     </div>
     <div class="steps">${steps}</div>
     <div class="card" id="wizard-body">${wizardStep()}</div>
@@ -432,7 +434,7 @@ function wizardStep() {
         <tbody id="tests-body">
           ${state.draft.tests.map((t, i) => `
             <tr>
-              <td><textarea data-test="${i}" data-key="input" placeholder="I was charged twice this month.">${esc(t.input)}</textarea></td>
+              <td><textarea data-test="${i}" data-key="input" placeholder="${esc(preset?.input_hint || 'One real case, exactly as it would arrive.')}">${esc(t.input)}</textarea></td>
               <td><textarea data-test="${i}" data-key="reference" placeholder="${esc(preset?.answer_hint || '')}">${esc(t.reference)}</textarea></td>
               <td><button class="btn btn-sm" data-act="drop-test" data-i="${i}" aria-label="Remove example">✕</button></td>
             </tr>`).join('')}
@@ -442,6 +444,9 @@ function wizardStep() {
     <div class="btn-row" style="margin-top:.8rem">
       <button class="btn btn-sm" data-act="add-test">Add an example</button>
       <button class="btn btn-sm" data-act="paste-tests">Paste a list</button>
+      ${preset?.starter?.length
+        ? `<button class="btn btn-sm" data-act="fill-example">Show me one</button>`
+        : ''}
     </div>`;
 }
 
@@ -997,6 +1002,19 @@ document.addEventListener('click', async (event) => {
     } else if (action === 'drop-label') {
       state.draft.labels.splice(Number(target.dataset.i), 1);
       renderWizard();
+    } else if (action === 'fill-example') {
+      /* Nobody writes a good test case staring at an empty box. Drop a real
+       * worked pair for this job type into the first free rows so the shape
+       * of the answer is obvious, then let them edit over it. */
+      const starter = (state.catalog?.presets || [])
+        .find((p) => p.id === state.draft.preset)?.starter || [];
+      starter.forEach(([input, reference]) => {
+        const blank = state.draft.tests.find((t) => !t.input && !t.reference);
+        if (blank) { blank.input = input; blank.reference = reference; }
+        else { state.draft.tests.push({ input, reference }); }
+      });
+      toast('Filled in an example. Edit it, or add your own beneath.');
+      if (location.hash.includes('/examples')) renderTestRows(); else renderWizard();
     } else if (action === 'add-test') {
       state.draft.tests.push({ input: '', reference: '' });
       if (location.hash.includes('/examples')) renderTestRows(); else renderWizard();
@@ -1616,7 +1634,7 @@ async function viewSettings(tab = 'general') {
   const panels = {
     general: () => `
       <div class="field"><label for="s-theme">Theme</label>
-        <select id="s-theme" data-set="theme">
+        <select id="s-theme" data-set="theme" data-applies-now="theme">
           ${['system', 'light', 'dark'].map((t) =>
             `<option ${settings.theme === t ? 'selected' : ''}>${t}</option>`).join('')}
         </select></div>
@@ -1669,6 +1687,20 @@ async function viewSettings(tab = 'general') {
       '<p class="btn-row"><button class="btn btn-primary" id="s-save">Save</button></p>'}`;
 
 
+
+  /* The theme select and the toggle in the chrome were writing to different
+   * places — the select saved to the server while the page read localStorage,
+   * so choosing a theme here appeared to do nothing. The client's own display
+   * is the client's to own, so this applies immediately and persists where
+   * the toggle reads from. */
+  const themeSelect = $('#s-theme');
+  if (themeSelect) {
+    themeSelect.value = storedTheme();
+    themeSelect.addEventListener('change', () => {
+      try { localStorage.setItem('arena-theme', themeSelect.value); } catch { /* private mode */ }
+      applyTheme(themeSelect.value);
+    });
+  }
 
   if ($('#s-save')) {
     $('#s-save').addEventListener('click', async () => {

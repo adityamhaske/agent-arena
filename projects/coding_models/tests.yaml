@@ -1,0 +1,60 @@
+# Each case is a task plus the assertions the generated code has to satisfy.
+#
+# Write cases that look like YOUR codebase. The point of this tool is that a
+# public benchmark cannot tell you which model is good at your work — these
+# cases are what make the answer yours, so replace them with real tasks from
+# your own repo as soon as you can.
+
+tests:
+  - id: sum_two
+    input: "Write `def add(a, b)` returning their sum."
+    reference: |
+      assert add(2, 3) == 5
+      assert add(-1, 1) == 0
+    tags: [easy]
+
+  - id: palindrome
+    input: "Write `def is_palindrome(s)` ignoring case, spaces and punctuation."
+    reference: |
+      assert is_palindrome('A man, a plan, a canal: Panama')
+      assert not is_palindrome('hello')
+      assert is_palindrome('')
+    tags: [strings]
+
+  - id: chunk_list
+    input: "Write `def chunk(items, size)` splitting a list into lists of at most `size`."
+    reference: |
+      assert chunk([1,2,3,4,5], 2) == [[1,2],[3,4],[5]]
+      assert chunk([], 3) == []
+    tags: [collections, edge-cases]
+
+  - id: retry_backoff
+    input: >
+      Write `def backoff_delays(attempts, base=1.0, cap=30.0)` returning the
+      exponential backoff delay for each attempt, capped at `cap`.
+    reference: |
+      d = backoff_delays(5, base=1.0, cap=8.0)
+      assert len(d) == 5
+      assert d[0] == 1.0
+      assert max(d) <= 8.0
+      assert d == sorted(d)
+    tags: [hard, real-world]
+
+  - id: parse_semver
+    input: >
+      Write `def parse_version(text)` returning (major, minor, patch) as ints
+      from a string like '2.10.3'. Raise ValueError on anything malformed.
+    reference: |
+      assert parse_version('2.10.3') == (2, 10, 3)
+      try:
+          parse_version('nope'); raise AssertionError('should have raised')
+      except ValueError:
+          pass
+    tags: [hard, error-handling]
+
+  - id: dedupe_stable
+    input: "Write `def dedupe(items)` removing duplicates while keeping first-seen order."
+    reference: |
+      assert dedupe([3,1,3,2,1]) == [3,1,2]
+      assert dedupe([]) == []
+    tags: [collections]
