@@ -1,0 +1,6 @@
+defaults:
+  eval_type: contains
+tests:
+- id: case_1
+  input: Your order ORD-449120 has shipped and arrives Tuesday.
+  reference: ORD-449120

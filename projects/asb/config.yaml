@@ -1,0 +1,77 @@
+project: asb
+description: The answer is code, and it is right if it actually runs and passes your checks.
+models:
+- key: sim_frontier
+  model: mock:frontier
+  label: Frontier-class (simulated)
+  params:
+    mode: flaky
+    accuracy: 96
+    latency_ms: 1500
+  card:
+    input_usd_per_mtok: 5
+    output_usd_per_mtok: 25
+- key: sim_balanced
+  model: mock:balanced
+  label: Mid-tier (simulated)
+  params:
+    mode: flaky
+    accuracy: 88
+    latency_ms: 620
+  card:
+    input_usd_per_mtok: 3
+    output_usd_per_mtok: 15
+- key: sim_small
+  model: mock:small
+  label: Small/fast (simulated)
+  params:
+    mode: flaky
+    accuracy: 78
+    latency_ms: 190
+  card:
+    input_usd_per_mtok: 1
+    output_usd_per_mtok: 5
+- key: sim_tiny
+  model: mock:tiny
+  label: Tiny (simulated)
+  params:
+    mode: flaky
+    accuracy: 55
+    latency_ms: 90
+  card:
+    input_usd_per_mtok: 0.25
+    output_usd_per_mtok: 1.25
+- key: mock
+  model: mock
+  label: Offline mock
+- key: mistral-small-latest
+  model: mistral-small-latest
+  label: Mistral Small
+- key: mistral-large-latest
+  model: mistral-large-latest
+  label: Mistral Large
+- key: local
+  model: local
+  label: Locally hosted model
+defaults:
+  system: You are a careful engineer. Reply with a single Python code block and nothing else
+    — no explanation, no prose, no markdown fence.
+  max_tokens: 900
+  temperature: 0
+run:
+  trials: 3
+  concurrency: 8
+  timeout_s: 60
+  retries: 1
+metrics:
+  weights:
+    accuracy: 0.75
+    cost: 0.15
+    latency: 0.1
+scorers:
+  default: code_exec
+output:
+  dir: results
+  formats:
+  - markdown
+  - json

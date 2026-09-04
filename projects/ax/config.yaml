@@ -1,0 +1,47 @@
+project: ax
+description: The answer is right if it contains the thing you are looking for.
+models:
+- key: mistral-large-latest
+  model: mistral-large-latest
+  label: Mistral Large
+- key: sim_balanced
+  model: mock:balanced
+  label: Mid-tier (simulated)
+  params:
+    mode: flaky
+    accuracy: 88
+    latency_ms: 620
+  card:
+    input_usd_per_mtok: 3
+    output_usd_per_mtok: 15
+- key: sim_frontier
+  model: mock:frontier
+  label: Frontier-class (simulated)
+  params:
+    mode: flaky
+    accuracy: 96
+    latency_ms: 1500
+  card:
+    input_usd_per_mtok: 5
+    output_usd_per_mtok: 25
+defaults:
+  system: Answer with the requested detail.
+  max_tokens: 200
+  temperature: 0
+run:
+  trials: 3
+  concurrency: 8
+  timeout_s: 60
+  retries: 1
+metrics:
+  weights:
+    accuracy: 0.7
+    cost: 0.15
+    latency: 0.15
+scorers:
+  default: contains
+output:
+  dir: results
+  formats:
+  - markdown
+  - json

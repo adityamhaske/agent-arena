@@ -1,0 +1,13 @@
+defaults:
+  eval_type: code_exec
+tests:
+- id: case_1
+  input: Write `def add(a, b)` that returns their sum.
+  reference: 'assert add(2, 3) == 5
+
+    assert add(-1, 1) == 0'
+- id: case_2
+  input: Write `def is_palindrome(s)` ignoring case and spaces.
+  reference: 'assert is_palindrome(''A man a plan a canal Panama'')
+
+    assert not is_palindrome(''hello'')'
