@@ -36,8 +36,8 @@ Last updated for the commit that added the run and project lifecycle.
 | `report`, `history`, `init`, `models`, `scorers`, `tests`, `validate`, `ui` | Shipped |
 | `projects`, `runs`, `rm`, `duplicate`, `archive`, `vacuum`, `label`, `env` | Shipped |
 | `export`, `secrets`, `providers`, `config` | Shipped |
+| `evaluate --resume` | Shipped |
 | `watch` | Planned |
-| `--resume` | Planned |
 
 ## Browser UI
 
@@ -71,7 +71,7 @@ Last updated for the commit that added the run and project lifecycle.
 | OS keyring storage | Shipped | `arena secrets set/get/rm`; a literal key typed into `arena providers add` is moved into the key store and only the reference is persisted |
 | `.env` loading | Shipped | Loaded in `cli.main()` before any command; real environment variables win |
 | User settings at `~/.config/agent-arena` | **Partial** | `service/settings.py` is complete; nothing reads it |
-| Per-provider rate limits | Planned | Parsed, never applied |
+| Per-provider rate limits | Shipped | Token buckets for `rpm`/`tpm`, a semaphore for `concurrency`, and an optional `burst`. A run that waited says so on the leaderboard |
 | User settings surface | Shipped | `arena config get/set/reset`, and `GET`/`PUT /api/settings` |
 
 The pattern in that table is worth stating plainly: the v2 foundation is built
@@ -103,16 +103,17 @@ routes, and runner integration — is the next piece of work.
 | PyPI release workflow with wheel verification | Shipped |
 | **Published to PyPI** | **Not yet** — the workflow is configured; no release has been tagged. Install from source |
 | Documentation site | Shipped |
-| 574 tests, offline, ~28s | Shipped |
+| 620 tests, offline, ~30s | Shipped |
 
 ## Statistics
 
 | Capability | Status |
 |---|---|
-| Bootstrap confidence intervals | Planned |
-| Paired comparison | Planned |
-| Power calculation | Planned |
-| Per-case discriminative value | Planned |
+| Bootstrap confidence intervals | Shipped | Resampled over test cases, not trials |
+| Paired comparison | Shipped | Every model provably sees identical cases, so the pairing is guaranteed |
+| Power calculation | Shipped | "about N cases in total would separate them" |
+| Per-case discriminative value | Shipped | `Analysis.discriminating` |
+| Error bars in the browser UI | Planned | The numbers exist; no UI renders them |
 
 ## Continuous evaluation
 
@@ -136,5 +137,6 @@ settings pages, and the per-case run detail view. The API those pages would
 call exists — `GET`/`PUT /api/settings`, the delete and export routes, job
 cancellation — but the eight-route hash-based UI does not use any of it yet.
 
-Two smaller things remain in the engine: `evaluate --resume`, and the
-statistics work (confidence intervals, paired comparison, power analysis).
+The engine is done for 2.0. What remains there is `arena watch` (scheduled
+re-runs) and a published GitHub Action — both of which are delivery rather than
+capability, and neither of which blocks a release.

@@ -110,6 +110,12 @@ class Leaderboard:
     weights: dict[str, float] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
 
+    #: Confidence intervals and the paired comparison of the top two, when
+    #: statistics are enabled. Attached rather than computed here: the ranking
+    #: and the evidence for it are separate questions, and a stored run can be
+    #: re-scored without recomputing intervals.
+    statistics: Any = None
+
     @property
     def ranked(self) -> list[ModelScore]:
         return [e for e in self.entries if e.ranked]

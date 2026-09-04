@@ -8,6 +8,7 @@ project-specific logic whatsoever — everything it does is decided by the
 
 from __future__ import annotations
 
+import json
 import random
 import subprocess
 import threading
@@ -26,6 +27,8 @@ from .config import ModelSpec, ProjectConfig, load_config
 from .errors import ArenaError, ConfigError, ScorerError
 from .hooks import HookSet
 from .metrics import Leaderboard, build_leaderboard
+from .ratelimit import LimiterRegistry
+from .statistics import analyse
 from .retry import classify, retry_after_seconds, sleep_for
 from .store import ResultStore
 from .testcase import TestCase, load_test_cases
@@ -138,8 +141,13 @@ class ArenaRunner:
         store: ResultStore | None = None,
         progress: ProgressCallback | None = None,
         cancel_event: threading.Event | None = None,
+        resume_run_id: str | None = None,
     ) -> None:
         self.config = config
+        #: Continue this run instead of starting a new one. A sweep that died
+        #: at 90% has already paid for those calls; starting over spends the
+        #: money twice.
+        self.resume_run_id = resume_run_id
         #: Set by a caller to stop a sweep mid-flight. Checked between calls
         #: rather than inside one: a request already sent has already been paid
         #: for, so abandoning its answer wastes the money without saving any.
@@ -151,6 +159,9 @@ class ArenaRunner:
         self._store = store
         self._owns_store = store is None
         self._judge_connector = None
+        #: Per-provider rate limits, shared across worker threads.
+        self._limiters = LimiterRegistry()
+        self._limiter_for: dict[str, Any] = {}
         self._judge_lock = threading.Lock()
         # One generator for the whole run rather than the module-level `random`,
         # so a caller that seeds this runner gets reproducible backoff.
@@ -172,10 +183,16 @@ class ArenaRunner:
         project_path: str | Path,
         progress: ProgressCallback | None = None,
         cancel_event: threading.Event | None = None,
+        resume_run_id: str | None = None,
         **overrides: Any,
     ) -> ArenaRunner:
         config = load_config(project_path, **overrides)
-        return cls(config, progress=progress, cancel_event=cancel_event)
+        return cls(
+            config,
+            progress=progress,
+            cancel_event=cancel_event,
+            resume_run_id=resume_run_id,
+        )
 
     @property
     def store(self) -> ResultStore:
@@ -282,15 +299,37 @@ class ArenaRunner:
                 skipped_models=skipped,
             )
 
-        run_id = self.store.start_run(
-            self.config.project,
-            models=[s.key for s in runnable],
-            n_tests=len(self.test_cases),
-            weights=self.config.metrics.normalized_weights(),
-            config_snapshot=self.config.raw,
-            arena_version=_arena_version(),
-            git_sha=_git_sha(self.config.root),
-        )
+        done: dict[tuple[str, str, int], CallResult] = {}
+        if self.resume_run_id:
+            run_id = self.resume_run_id
+            existing = self.store.run(run_id, include_deleted=True)
+            if existing is None:
+                raise ConfigError(
+                    f"cannot resume {run_id!r}: no such run in "
+                    f"{self.config.database}. `arena runs --project ...` lists them."
+                )
+            if existing.get("project") != self.config.project:
+                raise ConfigError(
+                    f"run {run_id!r} belongs to project {existing.get('project')!r}, "
+                    f"not {self.config.project!r}"
+                )
+            for row in self.store.results(
+                run_id=run_id, limit=10_000_000, include_deleted=True
+            ):
+                if row.get("status") == "ok":
+                    done[(row["model_key"], row["test_id"], int(row["trial"]))] = _rehydrate(row)
+            self.store.set_run_flags(run_id, deleted_at=None)
+            self._emit("run_resumed", run_id=run_id, already_done=len(done))
+        else:
+            run_id = self.store.start_run(
+                self.config.project,
+                models=[s.key for s in runnable],
+                n_tests=len(self.test_cases),
+                weights=self.config.metrics.normalized_weights(),
+                config_snapshot=self.config.raw,
+                arena_version=_arena_version(),
+                git_sha=_git_sha(self.config.root),
+            )
 
         connectors = {spec.key: self._connector_for(spec) for spec in runnable}
         results: list[CallResult] = []
@@ -303,7 +342,12 @@ class ArenaRunner:
                 for spec in runnable
                 for case in self.test_cases
                 for trial in range(1, self.config.run.trials + 1)
+                # A cell that already succeeded is not re-run. Only `ok` counts:
+                # an errored call is exactly what a resume is meant to retry.
+                if (spec.key, case.id, trial) not in done
             ]
+            results.extend(done.values())
+            completed = len(done)
             with ThreadPoolExecutor(max_workers=self.config.run.concurrency) as pool:
                 futures = {
                     pool.submit(self._execute, connectors[spec.key], spec, case, trial): (
@@ -385,6 +429,33 @@ class ArenaRunner:
                 # Replace rather than append: "no results recorded" is a
                 # consequence of the skip, not a second problem.
                 entry.failures = [f"skipped — {reason}"]
+
+        if self.config.statistics.enabled:
+            settings = self.config.statistics
+            ranked = [e.key for e in leaderboard.entries if e.status == "ranked"]
+            analysis = analyse(
+                by_model,
+                ranked_order=ranked,
+                resamples=settings.resamples,
+                confidence=settings.confidence,
+                seed=settings.seed,
+            )
+            leaderboard.statistics = analysis
+            for key, interval in analysis.intervals.items():
+                entry = leaderboard.get(key)
+                if entry is not None:
+                    entry.stats["accuracy_ci"] = interval.to_dict()
+            # One sentence, because the number a reader acts on is "are these
+            # two actually different" and not the interval itself.
+            leaderboard.notes.extend(analysis.notes)
+
+        waits = self._limiters.waits()
+        if waits:
+            worst = ", ".join(f"{key} {seconds:.0f}s" for key, seconds in sorted(waits.items()))
+            leaderboard.notes.append(
+                f"Waited on provider rate limits: {worst}. Raise the limits in "
+                "`providers[].rate_limit`, or lower `run.concurrency`."
+            )
 
         if stopped_early:
             # The leaderboard must say so. A truncated sweep presented as a
@@ -474,7 +545,12 @@ class ArenaRunner:
         )
         request = self.hooks.apply_pre_request(request, case, spec.key)
 
-        generation, error, attempts = self._generate_with_retries(connector, request)
+        limiter = self._limiter_for.get(spec.key)
+        if limiter is None:
+            generation, error, attempts = self._generate_with_retries(connector, request)
+        else:
+            with limiter:
+                generation, error, attempts = self._generate_with_retries(connector, request)
         result.attempts = attempts
 
         if generation is None:
@@ -606,6 +682,7 @@ class ArenaRunner:
 
     def _connector_for(self, spec: ModelSpec):
         profile = self.config.provider_for(spec)
+        self._limiter_for[spec.key] = self._limiters.for_profile(profile)
         connector = build_connector(spec, self.config.defaults, profile=profile)
         # A profile's own timeout, when it set one, has already been applied.
         if connector.timeout_s is None:
@@ -644,6 +721,44 @@ class ArenaRunner:
     def _emit(self, event: str, **payload: Any) -> None:
         if self.progress:
             self.progress({"event": event, **payload})
+
+
+def _rehydrate(row: dict[str, Any]) -> CallResult:
+    """A stored row back into a :class:`CallResult`.
+
+    Lives here rather than in the web layer because both a resumed run and the
+    browser's what-if need it, and core may not import web.
+    """
+    return CallResult(
+        model_key=row["model_key"],
+        model=row["model"],
+        test_id=row["test_id"],
+        trial=row.get("trial") or 1,
+        provider=row.get("provider") or "",
+        eval_type=row.get("eval_type") or "",
+        status=row.get("status") or "ok",
+        score=row.get("score"),
+        passed=bool(row["passed"]) if row.get("passed") is not None else None,
+        output=row.get("output") or "",
+        reference=row.get("reference"),
+        reason=row.get("reason") or "",
+        latency_ms=row.get("latency_ms"),
+        input_tokens=row.get("input_tokens"),
+        output_tokens=row.get("output_tokens"),
+        cost_usd=row.get("cost_usd"),
+        attempts=row.get("attempts") or 1,
+        error=row.get("error"),
+        tags=_split_tags(row.get("tags")),
+        metrics=json.loads(row.get("metrics_json") or "{}"),
+    )
+
+
+def _split_tags(raw: Any) -> list[str]:
+    if not raw:
+        return []
+    if isinstance(raw, list):
+        return [str(tag) for tag in raw]
+    return [tag.strip() for tag in str(raw).split(",") if tag.strip()]
 
 
 def _arena_version() -> str:

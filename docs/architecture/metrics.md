@@ -111,9 +111,36 @@ winner. A 12-case sweep does not have the resolution to distinguish models two
 points apart, and presenting it with the same confidence as a runaway result is
 the exact failure this project criticises in public benchmarks.
 
-Bootstrap confidence intervals, paired comparison and a power calculation ("about
-forty more cases would separate these at 95%") are designed but **not built**.
-See [../roadmap/future-updates.md](../roadmap/future-updates.md).
+`core/statistics.py` now puts a number on that.
+
+| What | How |
+|---|---|
+| **Confidence interval** per model | Percentile bootstrap over **test cases**, not trials |
+| **Paired comparison** of the top two | Every model provably sees identical cases, so pairing cancels per-case difficulty — the largest source of variance in a small eval |
+| **Power calculation** | "about 40 cases in total would separate them" |
+| **Discriminating cases** | Where the leaders disagree; the rest is ballast |
+
+Resampling over cases rather than trials is the load-bearing choice. A case is
+the unit of generalisation: you want to know whether the ranking holds on *other
+tasks like these*, not whether it holds if you asked the same twelve questions
+again. Resampling trials would answer the second question and report it as the
+first, shrinking every interval by a factor the data does not support.
+
+The sentence it emits always names **accuracy**, because the leaderboard ranks
+on the composite:
+
+> `sim_small` and `sim_frontier` are too close to call on accuracy — about 14
+> cases in total would separate them. Any gap between them here is coming from
+> cost and speed.
+
+Without that word, "indistinguishable" reads as "the ranking is meaningless",
+when the real meaning is usually the opposite: the models answer about equally
+well, so price and speed are deciding — and those are measured far more
+precisely than accuracy is.
+
+Configure with a `statistics:` block (`enabled`, `resamples`, `confidence`,
+`seed`). On by default: leaving it off would make the less honest presentation
+the easy one.
 
 ## Re-scoring without re-running
 

@@ -254,7 +254,7 @@ class ProviderSpec:
             )
 
         rate_limit = _as_dict(raw.get("rate_limit"), f"{where}.rate_limit")
-        for name in ("rpm", "tpm", "concurrency"):
+        for name in ("rpm", "tpm", "concurrency", "burst"):
             value = _opt_float(rate_limit.get(name), f"{where}.rate_limit.{name}")
             if value is not None and value <= 0:
                 raise ConfigError(
@@ -503,6 +503,46 @@ class Constraints:
 
 
 @dataclass
+class StatisticsSettings:
+    """How much evidence to demand before calling a winner.
+
+    On by default. The whole point of the arena is refusing to claim more than
+    the data supports, and an interval is the honest form of that — leaving it
+    off by default would make the dishonest presentation the easy one.
+    """
+
+    enabled: bool = True
+    resamples: int = 2000
+    confidence: float = 0.95
+    seed: int = 0
+
+    @classmethod
+    def parse(cls, raw: Any) -> StatisticsSettings:
+        if raw is None:
+            return cls()
+        if isinstance(raw, bool):
+            return cls(enabled=raw)
+        raw = _as_dict(raw, "statistics")
+        confidence = float(raw.get("confidence", 0.95))
+        if not 0.5 < confidence < 1.0:
+            raise ConfigError(
+                f"statistics.confidence must be between 0.5 and 1.0, got {confidence!r}"
+            )
+        resamples = int(raw.get("resamples", 2000))
+        if resamples < 100:
+            raise ConfigError(
+                f"statistics.resamples must be at least 100, got {resamples}; "
+                "fewer than that gives an unstable interval"
+            )
+        return cls(
+            enabled=bool(raw.get("enabled", True)),
+            resamples=resamples,
+            confidence=confidence,
+            seed=int(raw.get("seed", 0)),
+        )
+
+
+@dataclass
 class BudgetSettings:
     """What a run may spend before the harness stops or merely complains.
 
@@ -585,6 +625,7 @@ class ProjectConfig:
     metrics: MetricSettings = field(default_factory=MetricSettings)
     constraints: Constraints = field(default_factory=Constraints)
     budgets: BudgetSettings = field(default_factory=BudgetSettings)
+    statistics: StatisticsSettings = field(default_factory=StatisticsSettings)
     test_paths: list[str] = field(default_factory=list)
     test_filter: dict[str, Any] = field(default_factory=dict)
     scorer_paths: list[str] = field(default_factory=list)
@@ -708,6 +749,7 @@ class ProjectConfig:
             metrics=MetricSettings.parse(data.get("metrics")),
             constraints=Constraints.parse(data.get("constraints")),
             budgets=budgets,
+            statistics=StatisticsSettings.parse(data.get("statistics")),
             test_paths=test_paths,
             test_filter=test_filter,
             scorer_paths=[

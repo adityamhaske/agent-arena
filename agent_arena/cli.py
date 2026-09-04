@@ -227,7 +227,9 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
 
     config = load_config(args.project, **overrides)
     progress = None if args.quiet else _progress_printer()
-    runner = ArenaRunner(config, progress=progress)
+    runner = ArenaRunner(
+        config, progress=progress, resume_run_id=getattr(args, "resume", None)
+    )
 
     if args.dry_run:
         return _dry_run(runner)

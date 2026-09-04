@@ -10,6 +10,34 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.0.0rc2] - unreleased
+
+### Added
+
+- **`arena evaluate --resume <run-id>`.** A sweep that died at 90% has already
+  paid for those calls; starting over spends the money twice. Only successful
+  calls are skipped — an errored one is exactly what a resume is meant to retry.
+- **Per-provider rate limiting.** `providers[].rate_limit` now applies: token
+  buckets for `rpm` and `tpm`, a semaphore for `concurrency`, and an optional
+  `burst` for smoothing. A run that waited says so on the leaderboard, because
+  otherwise it is just mysteriously slow.
+- **Statistics** (`core/statistics.py`): bootstrap confidence intervals, a
+  paired comparison of the top two, a power calculation, and the cases where
+  the leaders most disagree. Resampled over **test cases**, not trials — a case
+  is the unit of generalisation, and resampling trials would shrink every
+  interval by a factor the data does not support. Configurable via a
+  `statistics:` block; on by default.
+
+  The sentence it emits names accuracy explicitly, because the leaderboard
+  ranks on the composite. "Indistinguishable" without that word reads as "the
+  ranking is meaningless", when it usually means the opposite: the models
+  answer about equally well, so cost and speed are deciding.
+
+### Changed
+
+- `_rehydrate` moved from `web/api.py` into `core/runner.py`. Both a resumed
+  run and the browser's what-if need it, and core may not import web.
+
 ## [2.0.0rc1] - 2026-09-03
 
 First release candidate. Published to TestPyPI only.

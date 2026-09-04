@@ -27,7 +27,7 @@ from ..core.config import BUILTIN_METRICS, ProjectConfig, load_config
 from ..core.errors import ArenaError
 from ..core.loaders import yaml_available
 from ..core.metrics import build_leaderboard
-from ..core.runner import ArenaRunner, CallResult
+from ..core.runner import ArenaRunner, CallResult, _rehydrate, _split_tags
 from ..core.store import ResultStore
 from ..scorers.registry import ScorerRegistry
 from . import language as lang
@@ -1050,34 +1050,3 @@ def _build_config(name: str, payload: dict[str, Any], preset: dict[str, Any]) ->
 
 #: Stored rows carry every field a CallResult has; rehydrating them lets a
 #: what-if go through the identical scoring path as a live run.
-def _rehydrate(row: dict[str, Any]) -> CallResult:
-    return CallResult(
-        model_key=row["model_key"],
-        model=row["model"],
-        test_id=row["test_id"],
-        trial=row.get("trial") or 1,
-        provider=row.get("provider") or "",
-        eval_type=row.get("eval_type") or "",
-        status=row.get("status") or "ok",
-        score=row.get("score"),
-        passed=bool(row["passed"]) if row.get("passed") is not None else None,
-        output=row.get("output") or "",
-        reference=row.get("reference"),
-        reason=row.get("reason") or "",
-        latency_ms=row.get("latency_ms"),
-        input_tokens=row.get("input_tokens"),
-        output_tokens=row.get("output_tokens"),
-        cost_usd=row.get("cost_usd"),
-        attempts=row.get("attempts") or 1,
-        error=row.get("error"),
-        tags=_split_tags(row.get("tags")),
-        metrics=json.loads(row.get("metrics_json") or "{}"),
-    )
-
-
-def _split_tags(raw: Any) -> list[str]:
-    if not raw:
-        return []
-    if isinstance(raw, list):
-        return [str(t) for t in raw]
-    return [part for part in str(raw).split(",") if part]
