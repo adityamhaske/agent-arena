@@ -10,6 +10,56 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.0.0rc3] - 2026-09-04
+
+### Added
+
+- **Async targets.** A target declared `async def` is now awaited by the
+  connector instead of returning a coroutine the scorer cannot read. Agent
+  frameworks are async-first — LangGraph, LlamaIndex and most tool loops hand
+  you a coroutine — so the previous behaviour taxed the common case: every
+  adapter had to open with the same `asyncio.run` wrapper, and the one that
+  forgot got a confusing error about the return type rather than an honest one
+  about the shape of its function.
+
+  The runner calls connectors on worker threads, so this is `asyncio.run` in
+  every real sweep. Embedding the runner inside your own async program is the
+  other branch: a loop is already running on that thread, so the coroutine gets
+  its own loop on a thread of its own rather than deadlocking.
+
+- **`projects/mara/` — example 6: an external multi-agent application.** Every
+  other example evaluates something written for the arena. This one points at a
+  separate codebase — a four-agent LangGraph research assistant (planner →
+  executor → critic → synthesizer) in its own repository — and compares three of
+  its depth settings, which is the configuration question you actually have to
+  answer before shipping such a thing.
+
+  It runs offline out of the box on the assistant's own scripted provider, and
+  is deliberately honest about what that proves: the wiring and the report's
+  structure, not which depth is better, because a fixture answer is the same
+  answer at every depth. The leaderboard says so — `within noise for a small
+  sweep` — instead of ranking three identical rows and calling it a result.
+
+  Two details in the adapter are the reusable part: it drives the app through
+  its **local host** (SQLite checkpointer, in-process event sink) rather than
+  its HTTP API, and it gives every call a **fresh temporary data directory**, so
+  no test case can warm a search cache that a later one then benefits from.
+
+### Documentation
+
+- `docs/guides/comparing-pipelines.md` gains an async example and a section on
+  connecting a separate codebase, including why the two adapter decisions above
+  matter for a fair comparison.
+- The README's layout table lists example 6, and a new section covers pointing
+  the arena at your own application.
+
+### Tests
+
+- 719, up from 715: four cover async targets — awaited, self-reporting, raising
+  through, and driven from inside a running event loop.
+
+---
+
 ## [2.0.0rc2] - 2026-09-04
 
 ### Added

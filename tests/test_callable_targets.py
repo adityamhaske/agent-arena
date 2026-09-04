@@ -72,6 +72,29 @@ def returns_object(prompt):
 
 def explodes(prompt):
     raise RuntimeError("pipeline blew up")
+
+
+async def async_plain(prompt):
+    """Async-first, the way most agent frameworks are written."""
+    import asyncio
+
+    await asyncio.sleep(0)
+    return "billing" if "charged" in prompt else "technical"
+
+
+async def async_reports_usage(prompt, params=None):
+    """Async and self-reporting, with params reaching the coroutine."""
+    return {
+        "output": "billing",
+        "cost_usd": 0.5,
+        "metrics": {"agent_calls": 4.0},
+        "input_tokens": 11,
+        "output_tokens": 22,
+    }
+
+
+async def async_explodes(prompt):
+    raise RuntimeError("async pipeline blew up")
 '''
 
 
@@ -121,6 +144,31 @@ class ConnectorTests:
         result = _connector(pipeline_dir, "plain").generate(_request())
         assert result.input_tokens > 0
         assert result.cost_usd is None  # never guessed
+
+    def test_an_async_target_is_awaited(self, pipeline_dir):
+        """An `async def` target needs no wrapper — the connector drives it."""
+        result = _connector(pipeline_dir, "async_plain").generate(_request())
+        assert result.text == "billing"
+
+    def test_an_async_target_reports_its_own_usage(self, pipeline_dir):
+        result = _connector(pipeline_dir, "async_reports_usage").generate(_request())
+        assert result.cost_usd == 0.5
+        assert result.input_tokens == 11
+        assert result.metrics == {"agent_calls": 4.0}
+
+    def test_an_async_target_raises_through(self, pipeline_dir):
+        """A failing coroutine fails the call, rather than scoring an empty answer."""
+        with pytest.raises(RuntimeError, match="async pipeline blew up"):
+            _connector(pipeline_dir, "async_explodes").generate(_request())
+
+    def test_an_async_target_works_inside_a_running_loop(self, pipeline_dir):
+        """Embedding the runner in an async program must not deadlock."""
+        import asyncio
+
+        async def embedded():
+            return _connector(pipeline_dir, "async_plain").generate(_request())
+
+        assert asyncio.run(embedded()).text == "billing"
 
     def test_an_object_with_a_text_attribute_is_accepted(self, pipeline_dir):
         assert _connector(pipeline_dir, "returns_object").generate(_request()).text == "billing"

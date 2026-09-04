@@ -6,7 +6,7 @@ Python 3.10, 3.11, 3.12 or 3.13. CI tests all four.
 
 ## Install
 
-A `2.0.0rc2` release candidate is on **TestPyPI**; nothing has been tagged on
+A `2.0.0rc3` release candidate is on **TestPyPI**; nothing has been tagged on
 the real index yet. Three ways to get it, in order of least commitment:
 
 **Try the release candidate with `uvx`, no install at all:**
@@ -14,7 +14,7 @@ the real index yet. Three ways to get it, in order of least commitment:
 ```bash
 uvx --index-url https://test.pypi.org/simple/ \
     --extra-index-url https://pypi.org/simple/ \
-    --from agent-arena==2.0.0rc2 arena --version
+    --from agent-arena==2.0.0rc3 arena --version
 ```
 
 **Install the release candidate:**
@@ -22,7 +22,7 @@ uvx --index-url https://test.pypi.org/simple/ \
 ```bash
 pip install --index-url https://test.pypi.org/simple/ \
              --extra-index-url https://pypi.org/simple/ \
-             agent-arena==2.0.0rc2
+             agent-arena==2.0.0rc3
 ```
 
 The `--extra-index-url` is needed because TestPyPI does not mirror PyPI — it

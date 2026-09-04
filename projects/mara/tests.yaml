@@ -1,0 +1,48 @@
+# Cases for the research assistant.
+#
+# The references below are *structural*: every report must carry a Sources
+# section and numbered citations tied to the claims. That is deliberately what
+# fake mode can prove — the scripted provider returns a fixture report, so the
+# only honest question offline is "did the pipeline produce a well-formed,
+# cited report", not "is the research any good".
+#
+# When you switch to real providers (`fake: false` in config.yaml), keep these
+# as a floor and add substance cases beside them:
+#
+#   - id: vector_db_tradeoffs
+#     input: "What are the tradeoffs of vector databases for RAG?"
+#     eval_type: llm_judge
+#     reference: >
+#       Names at least two concrete tradeoffs (recall vs latency, index build
+#       cost, filtering) and cites a source for each.
+#
+# `llm_judge` needs a `judge:` block in config.yaml.
+
+defaults:
+  eval_type: contains
+
+tests:
+  - id: rag_tradeoffs
+    input: "What are the tradeoffs of vector databases for retrieval-augmented generation?"
+    reference: ["## Sources", "[1]"]
+    tags: [structure, technical]
+
+  - id: multi_agent_failures
+    input: "How do multi-agent LLM systems lose information at handoffs between agents?"
+    reference: ["## Sources", "[1]"]
+    tags: [structure, technical]
+
+  - id: eval_methodology
+    input: "What makes an LLM evaluation benchmark trustworthy rather than merely reproducible?"
+    reference: ["## Sources", "[1]"]
+    tags: [structure, methodology]
+
+  - id: cost_controls
+    input: "What are the practical ways to control inference spend in a production LLM pipeline?"
+    reference: ["## Sources", "[1]"]
+    tags: [structure, operations]
+
+  - id: contested_claim
+    input: "Do smaller fine-tuned models outperform larger general models on narrow tasks?"
+    reference: ["## Sources", "[1]"]
+    tags: [structure, contested]

@@ -1,7 +1,7 @@
 # Agent Arena
 
 [![CI](https://img.shields.io/github/actions/workflow/status/adityamhaske/agent-arena/ci.yml?branch=main&label=CI)](https://github.com/adityamhaske/agent-arena/actions/workflows/ci.yml)
-[![TestPyPI](https://img.shields.io/badge/TestPyPI-2.0.0rc2-informational)](https://test.pypi.org/project/agent-arena/2.0.0rc2/)
+[![TestPyPI](https://img.shields.io/badge/TestPyPI-2.0.0rc3-informational)](https://test.pypi.org/project/agent-arena/2.0.0rc3/)
 ![Python 3.10 – 3.13](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)
 [![License MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -31,9 +31,9 @@ pip install -e .          # engine only; add [anthropic], [openai], [gemini], [a
 arena evaluate --project projects/support_triage
 ```
 
-A `2.0.0rc2` release candidate is also on TestPyPI, if you would rather not
+A `2.0.0rc3` release candidate is also on TestPyPI, if you would rather not
 clone: `pip install --index-url https://test.pypi.org/simple/
---extra-index-url https://pypi.org/simple/ agent-arena==2.0.0rc2` — see
+--extra-index-url https://pypi.org/simple/ agent-arena==2.0.0rc3` — see
 [installation](docs/operations/installation.md) for the `uvx` one-liner and a
 Docker image.
 
@@ -206,7 +206,8 @@ The arena inverts that. It knows nothing about any task:
 | `projects/local_demo/` | Example 3 — models on your own machine |
 | `projects/pipeline_demo/` | Example 4 — comparing multi-agent architectures, offline |
 | `projects/coding_models/` | Example 5 — which model should write code for your repo |
-| `tests/` | 715 tests covering the engine, service layer, targets and the UI |
+| `projects/mara/` | Example 6 — an external multi-agent app, run in-process, offline |
+| `tests/` | 719 tests covering the engine, service layer, targets and the UI |
 
 ## How to use it
 
@@ -305,6 +306,27 @@ needed by the last. The rigid handoff has no field for it and loses it every
 time. The free-text summary keeps it when prominent and drops it when buried,
 which is the intermittent failure that reads like a prompt problem for weeks.
 That is the multi-agent study's finding, now ranked, priced, and gated on.
+
+### Pointing it at your own application
+
+`projects/mara/` is the example that connects a **separate codebase**: a
+four-agent research assistant (planner → executor → critic → synthesizer) built
+on LangGraph, living in its own repository, driven in-process through its local
+host. The adapter is one function, and the thing being compared is not the
+model but the configuration you would actually ship — how deep the assistant
+researches before it answers.
+
+```bash
+arena evaluate --project projects/mara      # offline: the engine's own fake provider
+```
+
+Async targets are awaited directly, so an `async def` adapter needs no event-loop
+wrapper — most agent frameworks are async-first and this is what they hand you.
+Set `MARA_BACKEND` to point at a different checkout.
+
+The pattern generalises: import your pipeline, return its report and its real
+spend, and every depth setting, prompt revision or model routing you can express
+becomes a row on the leaderboard.
 
 ### Picking a model for your own codebase
 
@@ -598,7 +620,7 @@ Before you push:
 
 ```bash
 pip install -e ".[dev]"
-pytest -q                                                 # 715 tests, offline, ~44s
+pytest -q                                                 # 719 tests, offline, ~44s
 arena validate --project projects/support_triage
 arena evaluate --project projects/support_triage --quiet --no-report
 ```

@@ -21,12 +21,17 @@ declared beside the models it competes against::
       - key: single_call_baseline      # the control, and a fair one
         model: claude-sonnet-5
 
+An ``async def`` target is awaited for you — agent frameworks are async-first,
+and making every adapter open with the same event-loop wrapper would be a tax
+on the common case.
+
 Everything downstream is unchanged: the same scorers grade it, the same
 weights rank it, the same constraints can disqualify it.
 """
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import time
 from pathlib import Path
@@ -117,6 +122,12 @@ class CallableConnector(Connector):
 
         started = time.perf_counter()
         raw = fn(request.prompt, **kwargs)
+        if inspect.isawaitable(raw):
+            # Agent frameworks are async-first — LangGraph, LlamaIndex and most
+            # tool loops hand you a coroutine. Driving it here means a target
+            # can be written the way its own codebase already is, instead of
+            # every adapter opening with the same `asyncio.run` wrapper.
+            raw = _resolve(raw)
         measured = (time.perf_counter() - started) * 1000.0
 
         text, usage, metrics = _unpack(raw, self.spec)
@@ -135,6 +146,26 @@ class CallableConnector(Connector):
             metrics=metrics,
             raw={"target": self.spec},
         )
+
+
+def _resolve(awaitable: Any) -> Any:
+    """Drive a coroutine to completion from a synchronous caller.
+
+    The runner calls connectors on worker threads, which have no event loop, so
+    this is `asyncio.run` in every real sweep. The other branch is for anyone
+    embedding the runner inside their own async program: a loop is already
+    running on this thread, and `asyncio.run` would refuse, so the coroutine
+    gets its own loop on a thread of its own.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(awaitable)
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, awaitable).result()
 
 
 def _signature_of(fn: Callable[..., Any]) -> tuple[set[str], bool]:

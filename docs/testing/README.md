@@ -1,6 +1,6 @@
 # Testing
 
-**715 tests, 45 seconds, fully offline, no API key, no provider SDK.**
+**719 tests, 45 seconds, fully offline, no API key, no provider SDK.**
 
 That combination is a feature, not an accident. A suite you can run on every save
 removes every excuse not to run it, and one that needs no credentials means a

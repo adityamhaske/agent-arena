@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agent-arena"
-version = "2.0.0rc2"
+version = "2.0.0rc3"
 description = "A universal, config-driven arena for picking the right LLM for your project"
 readme = "README.md"
 requires-python = ">=3.10"

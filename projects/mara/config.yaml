@@ -1,0 +1,93 @@
+# Example project 6 — evaluating a real, external multi-agent application.
+#
+# The other examples compare models, or architectures written for the arena.
+# This one points at a separate codebase: the Multi-Agent Research Assistant, a
+# four-agent LangGraph pipeline (planner → executor → critic → synthesizer)
+# living in its own repository, run in-process through its local host.
+#
+# What is being compared is not the model — it is the *configuration you would
+# actually ship*: how deep the assistant researches before it answers.
+#
+# Runs offline out of the box: `fake: true` routes the engine at its scripted
+# provider, so the plumbing is provable with no key and no spend.
+#
+#   arena validate --project projects/mara
+#   arena evaluate --project projects/mara
+#
+# Point it at a different checkout with MARA_BACKEND=/path/to/backend.
+
+project: mara
+description: >
+  Three depth settings of the Multi-Agent Research Assistant, graded on whether
+  the report is well-formed and cited, and ranked on what that costs in money,
+  wall-clock time, and critic rework loops.
+
+targets:
+  - key: fast
+    run: pipelines/mara.py:research
+    params: {depth: fast, fake: true}
+    label: "MARA — fast"
+
+  - key: balanced
+    run: pipelines/mara.py:research
+    params: {depth: balanced, fake: true}
+    label: "MARA — balanced"
+
+  - key: comprehensive
+    run: pipelines/mara.py:research
+    params: {depth: comprehensive, fake: true}
+    label: "MARA — comprehensive"
+
+run:
+  trials: 1
+  concurrency: 2       # each call drives a full graph; keep the machine sane
+  timeout_s: 900       # a comprehensive real run is minutes, not seconds
+  retries: 0           # a pipeline failure is a finding, not a flake to paper over
+
+metrics:
+  weights:
+    accuracy: 0.55     # a report without citations is not a research report
+    cost: 0.20
+    latency: 0.15
+    rework_loops: 0.10 # the critic sending work back is real spend and real time
+
+  cost:
+    # $0.05 per research run. In fake mode every target clears this easily, so
+    # the cost column only starts separating them once `fake: false`.
+    budget_usd_per_1k_calls: 50.0
+  latency:
+    target_ms: 120000
+  rework_loops:
+    direction: min
+
+  tie_breaker: accuracy
+
+constraints:
+  # Structural, not editorial: a depth setting that returns an uncited report is
+  # not "third place", it is unshippable.
+  min_accuracy: 0.90
+
+scorers:
+  default: contains
+
+output:
+  dir: results
+  formats: [markdown, json]
+
+# ---------------------------------------------------------------------------
+# Going live
+# ---------------------------------------------------------------------------
+# 1. Set `fake: false` on the targets you want to measure for real.
+# 2. Export the assistant's own provider keys (it reads them itself — the arena
+#    never sees them): ANTHROPIC_API_KEY, GOOGLE_API_KEY, OPENAI_API_KEY, …
+#    or put them in the assistant repo's .env, which the adapter loads.
+# 3. Swap the structural cases in tests.yaml for substance ones and add:
+#
+# judge:
+#   model: claude-opus-5
+#   max_tokens: 512
+#
+# The per-role model routing (MODEL_PLANNER, MODEL_EXECUTOR, …) is the
+# assistant's own env contract, so a second axis is available for free: add a
+# target per routing and the leaderboard compares "which model runs the
+# executor" on your cases, not on a public benchmark.

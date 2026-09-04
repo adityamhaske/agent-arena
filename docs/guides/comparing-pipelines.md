@@ -33,6 +33,14 @@ def answer(prompt, **ctx):
     return "..."
 ```
 
+An `async def` target is awaited for you — no `asyncio.run` wrapper, because
+most agent frameworks hand you a coroutine:
+
+```python
+async def answer(prompt, **ctx):
+    return await graph.ainvoke(prompt)
+```
+
 Or report your own spend and metrics:
 
 ```python
@@ -75,6 +83,31 @@ arena evaluate --project projects/pipeline_demo
   ✗ supervisor_worker: accuracy 63.6% below the required 80.0%
   ! Only one model cleared the hard constraints, so the ranking is not a comparison.
 ```
+
+## Connecting a separate codebase
+
+`projects/mara/` points the arena at an application in **another repository** —
+a four-agent LangGraph research assistant — and compares three of its depth
+settings. Two details make that adapter worth copying:
+
+- It imports the app's **local host** (SQLite checkpointer, in-process event
+  sink) rather than calling its HTTP API. Fewer moving parts sit between the
+  arena and the thing being measured.
+- Each call gets a **fresh temporary data directory**, so no test case can warm
+  a cache that a later one then benefits from. A shared cache would quietly
+  make whichever target ran second look faster.
+
+It runs offline by default, on the engine's own scripted provider. That proves
+the wiring and the report's structure; it cannot separate the depth settings,
+because a fixture answer is the same answer at every depth. The arena says so
+rather than ranking noise:
+
+```text
+! comprehensive beat balanced by 0.000 — within noise for a small sweep.
+```
+
+Flip `fake: false`, and the same three targets start telling you what depth
+actually buys.
 
 ### What that result means
 
