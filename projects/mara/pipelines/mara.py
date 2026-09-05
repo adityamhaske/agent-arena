@@ -28,6 +28,18 @@ from pathlib import Path
 _SIBLINGS = Path(__file__).resolve().parents[4]
 BACKEND = Path(os.environ.get("MARA_BACKEND") or _SIBLINGS / "Multi-Agent Research Assistant" / "backend")
 
+# Checked here, at import, rather than on the first call. The connector runs a
+# healthcheck before the sweep precisely so a missing target costs nothing; a
+# deferred import would let `arena validate` report "ready" and then fail every
+# call, which is the most expensive way to learn the path is wrong.
+if not (BACKEND / "research_engine").is_dir():
+    raise ImportError(
+        f"the Multi-Agent Research Assistant is not at {BACKEND}. "
+        "This example evaluates an application from a separate repository: "
+        "check it out beside this one, or set MARA_BACKEND=/path/to/its/backend. "
+        "See projects/mara/README.md."
+    )
+
 if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
 

@@ -612,8 +612,8 @@ def cmd_validate(args: argparse.Namespace) -> int:
     if skipped:
         print(
             f"\n{len(skipped)} model(s) would be skipped for the reasons above "
-            "(missing credentials, or an endpoint that is not reachable). "
-            "Everything else is ready to run."
+            "(missing credentials, an endpoint that is not reachable, or a "
+            "target that cannot be imported). Everything else is ready to run."
         )
     else:
         print("\nProject is valid and ready: arena evaluate --project " + str(args.project))

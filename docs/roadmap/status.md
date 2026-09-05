@@ -105,7 +105,7 @@ routes, and runner integration — is the next piece of work.
 | PyPI release workflow with wheel verification | Shipped |
 | **Published to PyPI** | **Not yet** — the workflow is configured; no release has been tagged. Install from source |
 | Documentation site | Shipped |
-| 719 tests, offline, ~44s | Shipped |
+| 721 tests, offline, ~44s | Shipped |
 
 ## Statistics
 

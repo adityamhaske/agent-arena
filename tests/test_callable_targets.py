@@ -97,6 +97,14 @@ async def async_explodes(prompt):
     raise RuntimeError("async pipeline blew up")
 '''
 
+UNIMPORTABLE = '''
+raise ImportError("the app is not checked out here; set APP_HOME")
+
+
+def answer(prompt):
+    return "unreachable"
+'''
+
 
 @pytest.fixture()
 def pipeline_dir(tmp_path: Path) -> Path:
@@ -248,6 +256,47 @@ class ConfigTests:
     def test_neither_models_nor_targets_is_an_error(self, tmp_path):
         with pytest.raises(ConfigError, match="at least one entry under"):
             ProjectConfig.from_dict({"project": "p"}, root=tmp_path)
+
+
+class PreflightTests:
+    """A target that cannot import must be caught before the sweep, not during.
+
+    The expensive version of this mistake: the import fails identically on every
+    call, so a mistyped path reads as a model that answers nothing.
+    """
+
+    CASES = [{"id": "one", "input": "I was charged twice", "reference": "billing"}]
+
+    def _runner(self, root: Path, target: dict, extra: dict) -> ArenaRunner:
+        write_project(
+            root,
+            {
+                "project": "p",
+                "targets": [target],
+                "output": {"dir": "results", "formats": []},
+            },
+            self.CASES,
+            extra_files=extra,
+        )
+        return ArenaRunner(ProjectConfig.load(root))
+
+    def test_preflight_skips_a_target_that_cannot_be_imported(self, tmp_path):
+        runner = self._runner(
+            tmp_path / "broken",
+            {"key": "broken", "run": "broken.py:answer"},
+            {"broken.py": textwrap.dedent(UNIMPORTABLE)},
+        )
+        skipped = runner.preflight()
+        assert "broken" in skipped
+        assert "APP_HOME" in skipped["broken"]
+
+    def test_a_healthy_target_is_not_skipped(self, tmp_path):
+        runner = self._runner(
+            tmp_path / "fine",
+            {"key": "fine", "run": "pipe.py:plain"},
+            {"pipe.py": textwrap.dedent(PIPELINE)},
+        )
+        assert runner.preflight() == {}
 
 
 class EndToEndTests:

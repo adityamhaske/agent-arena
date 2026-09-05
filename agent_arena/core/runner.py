@@ -246,10 +246,13 @@ class ArenaRunner:
                     skipped[spec.key] = f"{env_var} is not set"
                     continue
 
-            # A local server that is not running is the same class of problem
-            # as a missing API key: skip it with a reason instead of emitting
-            # one connection error per test case.
-            if resolve_provider(spec) in ("local", "ollama", "lmstudio"):
+            # A local server that is not running, or a target that cannot be
+            # imported, is the same class of problem as a missing API key: skip
+            # it with a reason instead of emitting one identical error per test
+            # case. A pipeline is the expensive version of that mistake — the
+            # import fails on every call, and the run looks like a bad model
+            # rather than a bad path.
+            if resolve_provider(spec) in ("local", "ollama", "lmstudio", "callable"):
                 connector = self._connector_for(spec)
                 try:
                     reason = connector.healthcheck()

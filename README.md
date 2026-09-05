@@ -207,7 +207,7 @@ The arena inverts that. It knows nothing about any task:
 | `projects/pipeline_demo/` | Example 4 — comparing multi-agent architectures, offline |
 | `projects/coding_models/` | Example 5 — which model should write code for your repo |
 | `projects/mara/` | Example 6 — an external multi-agent app, run in-process, offline |
-| `tests/` | 719 tests covering the engine, service layer, targets and the UI |
+| `tests/` | 721 tests covering the engine, service layer, targets and the UI |
 
 ## How to use it
 
@@ -620,7 +620,7 @@ Before you push:
 
 ```bash
 pip install -e ".[dev]"
-pytest -q                                                 # 719 tests, offline, ~44s
+pytest -q                                                 # 721 tests, offline, ~44s
 arena validate --project projects/support_triage
 arena evaluate --project projects/support_triage --quiet --no-report
 ```
