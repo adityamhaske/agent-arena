@@ -10,6 +10,47 @@ versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.0.0] - 2026-09-05
+
+The 2.0 line, promoted from `2.0.0rc3` and the first release published to the
+real index. Three release candidates went to TestPyPI; what changed since rc3 is
+one fix, below.
+
+The headline of 2.0 is that the arena stopped being only about models. A
+**target** — any Python callable, now including an `async def` one — is graded,
+ranked and disqualified by exactly the machinery a model is, so the thing on the
+leaderboard can be a whole pipeline, an agent architecture, or an application
+from another repository entirely. The rest is the browser UI, resumable sweeps,
+rate limiting, bootstrap confidence intervals, and `arena watch` for continuous
+evaluation. See the three release-candidate sections below for the detail.
+
+### Fixed
+
+- **`preflight` healthchecks pipeline targets.** `CallableConnector.healthcheck`
+  has always imported the target before a run — "so a typo costs nothing" — but
+  `preflight` only called it for local endpoints, so nothing ever ran it. A
+  target with a wrong path passed `arena validate` as "valid and ready" and then
+  failed identically on every call, which reads as a model that answers nothing
+  rather than as a path that is wrong.
+
+  Targets are now healthchecked alongside local servers and skipped with their
+  import error as the reason, and `arena validate`'s summary line names that
+  third cause.
+
+### Changed
+
+- `projects/mara` checks for the assistant it evaluates at import rather than on
+  first call, so a missing checkout surfaces at `arena validate` with the
+  environment variable to set. It is the one example here that needs a
+  repository other than this one, and CI cannot exercise it for that reason.
+
+### Tests
+
+- 721, up from 719: two cover a target that cannot be imported being caught by
+  preflight rather than by the sweep.
+
+---
+
 ## [2.0.0rc3] - 2026-09-04
 
 ### Added

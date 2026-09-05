@@ -6,27 +6,23 @@ Python 3.10, 3.11, 3.12 or 3.13. CI tests all four.
 
 ## Install
 
-A `2.0.0rc3` release candidate is on **TestPyPI**; nothing has been tagged on
-the real index yet. Three ways to get it, in order of least commitment:
+Three ways, in order of least commitment:
 
-**Try the release candidate with `uvx`, no install at all:**
-
-```bash
-uvx --index-url https://test.pypi.org/simple/ \
-    --extra-index-url https://pypi.org/simple/ \
-    --from agent-arena==2.0.0rc3 arena --version
-```
-
-**Install the release candidate:**
+**Try it with `uvx`, no install at all:**
 
 ```bash
-pip install --index-url https://test.pypi.org/simple/ \
-             --extra-index-url https://pypi.org/simple/ \
-             agent-arena==2.0.0rc3
+uvx --from agent-arena arena --version
 ```
 
-The `--extra-index-url` is needed because TestPyPI does not mirror PyPI — it
-is where `pyyaml`, the one real dependency, actually comes from.
+**Install from PyPI:**
+
+```bash
+pip install agent-arena
+```
+
+Provider SDKs are extras, because the engine needs none of them:
+`pip install "agent-arena[anthropic]"`, or `[openai]`, `[gemini]`, `[litellm]`,
+`[all]`.
 
 **Or install from source**, which always tracks `main`:
 
@@ -42,13 +38,9 @@ even that is optional — JSON config works without it.
 ## Docker
 
 ```bash
-docker build --build-arg PIP_INDEX_URL=https://test.pypi.org/simple/ \
-  -t agent-arena .
+docker build -t agent-arena .
 docker run -p 8420:8420 -v $(pwd)/projects:/data/projects agent-arena
 ```
-
-Drop `--build-arg PIP_INDEX_URL=...` once a real release is tagged; the
-Dockerfile then installs the same package from PyPI directly.
 
 `arena ui` has no authentication by design, and inside a container reaching it
 at all requires binding `0.0.0.0` — which the image does. That means anyone

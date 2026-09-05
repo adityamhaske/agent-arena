@@ -29,7 +29,7 @@ from .core.metrics import Leaderboard, ModelScore
 from .core.runner import ArenaRunner, RunResult
 from .core.testcase import TestCase, load_test_cases
 
-__version__ = "2.0.0rc3"
+__version__ = "2.0.0"
 
 __all__ = [
     "ArenaError",
